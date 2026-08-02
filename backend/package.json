@@ -4,7 +4,9 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "dev": "nodemon src/index.js"
+    "build": "rm -rf dist && cp -R src dist",
+    "dev": "nodemon src/index.js",
+    "start": "node src/index.js"
   },
   "keywords": [],
   "author": "",
@@ -13,6 +15,7 @@
   "dependencies": {
     "@clerk/express": "^2.1.49",
     "cors": "^2.8.6",
+    "cron": "^4.4.0",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "mongoose": "^9.9.1"
