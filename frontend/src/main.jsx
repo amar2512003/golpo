@@ -8,7 +8,9 @@ import { BrowserRouter } from "react-router";
 createRoot(document.getElementById("root")).render(
   <StrictMode>
     <ClerkProvider>
-        <App />
+      <BrowserRouter>
+      <App />
+      </BrowserRouter>
     </ClerkProvider>
   </StrictMode>
 );
