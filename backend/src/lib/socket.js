@@ -24,6 +24,63 @@ io.on("connection", (socket) => {
   // io.emit() sends event to everyone - broadcast
   io.emit("getOnlineUsers", Object.keys(userSocketMap));
 
+  // ---------------- WebRTC Signaling ----------------
+
+  // Send offer
+  socket.on("call:offer", ({ toUserId, fromUserId, offer, callType }) => {
+    const targetSocketId = getReceiverSocketId(toUserId);
+
+    if (targetSocketId) {
+      io.to(targetSocketId).emit("call:offer", {
+        fromUserId,
+        offer,
+        callType,
+      });
+    }
+  });
+
+  // Send answer
+  socket.on("call:answer", ({ toUserId, answer }) => {
+    const targetSocketId = getReceiverSocketId(toUserId);
+
+    if (targetSocketId) {
+      io.to(targetSocketId).emit("call:answer", {
+        answer,
+      });
+    }
+  });
+
+  // Exchange ICE candidates
+  socket.on("call:ice-candidate", ({ toUserId, candidate }) => {
+    const targetSocketId = getReceiverSocketId(toUserId);
+
+    if (targetSocketId) {
+      io.to(targetSocketId).emit("call:ice-candidate", {
+        candidate,
+      });
+    }
+  });
+
+  // End call
+  socket.on("call:end", ({ toUserId }) => {
+    const targetSocketId = getReceiverSocketId(toUserId);
+
+    if (targetSocketId) {
+      io.to(targetSocketId).emit("call:end");
+    }
+  });
+
+  // Reject call
+  socket.on("call:reject", ({ toUserId }) => {
+    const targetSocketId = getReceiverSocketId(toUserId);
+
+    if (targetSocketId) {
+      io.to(targetSocketId).emit("call:reject");
+    }
+  });
+
+  // ---------------- End WebRTC Signaling ----------------
+
   // socket.on is used to listen for events
   socket.on("disconnect", () => {
     if (userId) delete userSocketMap[userId];

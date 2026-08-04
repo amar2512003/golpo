@@ -6,6 +6,7 @@ import ChatSidebar from "../components/chat/ChatSidebar";
 import { ChatHeader } from "../components/chat/ChatHeader";
 import { MessageList } from "../components/chat/MessageList";
 import { ChatComposer } from "../components/chat/ChatComposer";
+import { VideoCallModal } from "../components/chat/VideoCallModal";
 
 function ChatPage() {
   const { frameStyle } = useWallpaper();
@@ -34,22 +35,30 @@ function ChatPage() {
   }, [getMessages, activeConversationId, subscribeToMessages, unsubscribeFromMessages]);
 
   return (
-    <div className="flex h-dvh flex-col overflow-hidden p-2 sm:p-3 md:p-8" style={frameStyle}>
-      <div className="mx-auto flex w-full max-w-6xl flex-1 overflow-hidden rounded-2xl border border-border bg-background text-foreground">
-        <ChatSidebar />
+    <>
+      <div
+        className="flex h-dvh flex-col overflow-hidden p-2 sm:p-3 md:p-8"
+        style={frameStyle}
+      >
+        <div className="mx-auto flex w-full max-w-6xl flex-1 overflow-hidden rounded-2xl border border-border bg-background text-foreground">
+          <ChatSidebar />
 
-        <div
-          className={`flex-1 flex-col overflow-hidden ${
-            !isLargeScreen && !activeConversationId ? "hidden lg:flex" : "flex"
-          }`}
-        >
-          <ChatHeader />
-          <MessageList />
+          <div
+            className={`flex-1 flex-col overflow-hidden ${
+              !isLargeScreen && !activeConversationId ? "hidden lg:flex" : "flex"
+            }`}
+          >
+            <ChatHeader />
+            <MessageList />
 
-          {activeConversation ? <ChatComposer /> : null}
+            {activeConversation ? <ChatComposer /> : null}
+          </div>
         </div>
       </div>
-    </div>
+
+      <VideoCallModal />
+    </>
   );
 }
+
 export default ChatPage;

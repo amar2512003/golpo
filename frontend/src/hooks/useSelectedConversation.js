@@ -31,6 +31,7 @@ function mapUserToConversation({ user, messages, authUser, onlineUsers }) {
   return {
     id: user._id,
     peer: {
+      _id: user._id, // Added for WebRTC/video calling
       name: user.fullName,
       subtitle: user.email,
       isOnline: onlineUsers.includes(user._id),
@@ -58,7 +59,12 @@ export function useSelectedConversation() {
     : null;
 
   const activeConversation = selectedUser
-    ? mapUserToConversation({ user: selectedUser, messages, authUser, onlineUsers })
+    ? mapUserToConversation({
+        user: selectedUser,
+        messages,
+        authUser,
+        onlineUsers,
+      })
     : null;
 
   return {
