@@ -1,6 +1,8 @@
+import { useState, useEffect } from "react";
 import { Avatar, Button } from "@heroui/react";
 import {
   ChevronLeftIcon,
+  Maximize2Icon,
   PhoneIcon,
   VideoIcon,
   Volume2Icon,
@@ -26,6 +28,24 @@ export function ChatHeader() {
   const startCall = useCallStore((state) => state.startCall);
 
   const { activeConversation, isLargeScreen } = useSelectedConversation();
+
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
+  }, []);
+
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen();
+    } else {
+      document.exitFullscreen();
+    }
+  };
 
   const handleStartCall = () => {
     if (!activeConversation) return;
@@ -112,6 +132,21 @@ export function ChatHeader() {
         </div>
 
         <ThemeToggle />
+
+        <Button
+          variant="ghost"
+          size="sm"
+          isIconOnly
+          className="shrink-0"
+          aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+          onPress={toggleFullscreen}
+        >
+          {isFullscreen ? (
+            <XIcon className="size-5.5 text-red-500" strokeWidth={2.5} aria-hidden />
+          ) : (
+            <Maximize2Icon className="size-5.5" strokeWidth={2} aria-hidden />
+          )}
+        </Button>
 
         {activeConversation ? (
           <>
