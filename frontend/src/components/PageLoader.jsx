@@ -1,8 +1,8 @@
-import { AppLogo } from "./AppLogo";
+import { APP_NAME, AppLogo } from "./AppLogo";
 
-export function PageLoader() {
+export default function PageLoader() {
   return (
-    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-8 bg-[#0a0a0c]">
+    <div className="flex h-dvh flex-col items-center justify-center gap-8 bg-[#0a0a0c]">
       <div className="relative flex items-center justify-center">
         <div className="absolute size-40 animate-[spin_8s_linear_infinite] rounded-full border border-white/10" />
         <div className="absolute size-52 animate-[spin_12s_linear_infinite_reverse] rounded-full border border-white/5" />
@@ -15,7 +15,7 @@ export function PageLoader() {
       </div>
 
       <div className="flex flex-col items-center gap-3">
-        <p className="text-sm font-medium tracking-wide text-white/70">Loading Goppo</p>
+        <p className="text-sm font-medium tracking-wide text-white/70">Loading {APP_NAME}</p>
         <div className="flex gap-1.5">
           <span className="size-1.5 animate-bounce rounded-full bg-white/60 [animation-delay:-0.3s]" />
           <span className="size-1.5 animate-bounce rounded-full bg-white/60 [animation-delay:-0.15s]" />
