@@ -23,47 +23,26 @@ const FRONTEND_URL =
 const publicDir = path.join(process.cwd(), "public");
 
 // --------------------------------------------------
-// Vercel MongoDB connection
+// MongoDB connection
 // --------------------------------------------------
 
 let dbConnected = false;
 
 async function ensureDBConnection() {
-  if (!dbConnected) {
-    await connectDB();
-    dbConnected = true;
-
-    console.log("MongoDB connected on Vercel");
+  if (dbConnected) {
+    return;
   }
+
+  await connectDB();
+
+  dbConnected = true;
+
+  console.log("MongoDB connected");
 }
 
 // --------------------------------------------------
-// Middleware
+// Basic middleware
 // --------------------------------------------------
-
-// Clerk webhook MUST receive raw body
-app.use(
-  "/api/webhooks/clerk",
-  express.raw({ type: "application/json" }),
-  async (req, res, next) => {
-    if (process.env.VERCEL) {
-      try {
-        await ensureDBConnection();
-      } catch (error) {
-        console.error("MongoDB connection failed:", error);
-
-        return res.status(500).json({
-          error: "Database connection failed",
-        });
-      }
-    }
-
-    next();
-  },
-  clerkWebhook
-);
-
-app.use(express.json());
 
 app.use(
   cors({
@@ -94,36 +73,89 @@ app.get("/health", (req, res) => {
 });
 
 // --------------------------------------------------
-// MongoDB connection for Vercel API requests
+// Clerk webhook
+// IMPORTANT: webhook needs raw body
 // --------------------------------------------------
 
-if (process.env.VERCEL) {
-  app.use(async (req, res, next) => {
-    // Health check does not need MongoDB
-    if (req.path === "/health") {
-      return next();
-    }
-
+app.use(
+  "/api/webhooks/clerk",
+  express.raw({
+    type: "application/json",
+  }),
+  async (req, res, next) => {
     try {
       await ensureDBConnection();
       next();
     } catch (error) {
-      console.error("MongoDB connection failed:", error);
+      console.error(
+        "MongoDB connection failed:",
+        error
+      );
 
-      res.status(500).json({
+      return res.status(500).json({
         error: "Database connection failed",
       });
     }
-  });
+  },
+  clerkWebhook
+);
+
+// --------------------------------------------------
+// JSON body parser
+// --------------------------------------------------
+
+app.use(express.json());
+
+// --------------------------------------------------
+// API routes
+// --------------------------------------------------
+
+if (process.env.VERCEL) {
+  // Make sure MongoDB is connected before API requests
+  app.use(
+    "/api/auth",
+    async (req, res, next) => {
+      try {
+        await ensureDBConnection();
+        next();
+      } catch (error) {
+        console.error(
+          "MongoDB connection failed:",
+          error
+        );
+
+        return res.status(500).json({
+          error: "Database connection failed",
+        });
+      }
+    },
+    authRoutes
+  );
+
+  app.use(
+    "/api/messages",
+    async (req, res, next) => {
+      try {
+        await ensureDBConnection();
+        next();
+      } catch (error) {
+        console.error(
+          "MongoDB connection failed:",
+          error
+        );
+
+        return res.status(500).json({
+          error: "Database connection failed",
+        });
+      }
+    },
+    messageRoutes
+  );
+} else {
+  // Render / Local
+  app.use("/api/auth", authRoutes);
+  app.use("/api/messages", messageRoutes);
 }
-
-// --------------------------------------------------
-// Routes
-// --------------------------------------------------
-
-app.use("/api/auth", authRoutes);
-
-app.use("/api/messages", messageRoutes);
 
 // --------------------------------------------------
 // Production static files
@@ -148,7 +180,7 @@ if (fs.existsSync(publicDir)) {
 }
 
 // --------------------------------------------------
-// Local / Render
+// Local / Render server
 // --------------------------------------------------
 
 if (!process.env.VERCEL) {
@@ -174,7 +206,7 @@ if (!process.env.VERCEL) {
 }
 
 // --------------------------------------------------
-// Vercel export
+// Vercel
 // --------------------------------------------------
 
 export default app;
