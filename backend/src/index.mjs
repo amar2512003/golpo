@@ -180,7 +180,7 @@ if (fs.existsSync(publicDir)) {
 }
 
 // --------------------------------------------------
-// Local / Render server
+// Local / Render
 // --------------------------------------------------
 
 if (!process.env.VERCEL) {
@@ -206,7 +206,7 @@ if (!process.env.VERCEL) {
 }
 
 // --------------------------------------------------
-// Vercel
+// Vercel export
 // --------------------------------------------------
 
-export default app;
+export default server;

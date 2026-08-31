@@ -5,7 +5,7 @@ import { io } from "socket.io-client";
 const BASE_URL =
   import.meta.env.MODE === "development"
     ? "http://localhost:3000"
-    : "/";
+    : window.location.origin;
 
 export const useAuthStore = create((set, get) => ({
   authUser: null,
@@ -18,11 +18,13 @@ export const useAuthStore = create((set, get) => ({
 
     try {
       const res = await axiosInstance.get("/auth/check");
+
       set({ authUser: res.data });
 
       get().connectSocket(res.data);
     } catch (error) {
       console.error("Error in checkAuth:", error);
+
       set({ authUser: null });
     } finally {
       set({ isCheckingAuth: false });
@@ -43,6 +45,12 @@ export const useAuthStore = create((set, get) => ({
     if (!user || get().socket?.connected) return;
 
     const socket = io(BASE_URL, {
+      path: "/socket.io",
+
+      transports: ["websocket", "polling"],
+
+      withCredentials: true,
+
       query: {
         userId: user._id,
       },
@@ -50,22 +58,42 @@ export const useAuthStore = create((set, get) => ({
 
     set({ socket });
 
+    // ---------------- Socket Events ----------------
+
+    socket.on("connect", () => {
+      console.log("Socket connected:", socket.id);
+    });
+
+    socket.on("connect_error", (error) => {
+      console.error("Socket connection error:", error);
+    });
+
+    socket.on("disconnect", (reason) => {
+      console.log("Socket disconnected:", reason);
+    });
+
     socket.on("getOnlineUsers", (userIds) => {
       set({
         onlineUsers: userIds,
       });
     });
 
-    // ---------------- WebRTC Signaling Listeners ----------------
+    // ---------------- WebRTC Signaling ----------------
 
+    // Receive call offer
     socket.on("call:offer", (data) => {
       import("./useCallStore").then(({ useCallStore }) => {
         import("./useChatStore").then(({ useChatStore }) => {
-          const { users, conversations } = useChatStore.getState();
+          const { users, conversations } =
+            useChatStore.getState();
 
           const caller =
-            users.find((u) => u._id === data.fromUserId) ||
-            conversations.find((u) => u._id === data.fromUserId);
+            users.find(
+              (u) => u._id === data.fromUserId
+            ) ||
+            conversations.find(
+              (u) => u._id === data.fromUserId
+            );
 
           const callerInfo = caller
             ? {
@@ -77,32 +105,46 @@ export const useAuthStore = create((set, get) => ({
                 profilePic: null,
               };
 
-          useCallStore.getState().receiveOffer(data, callerInfo);
+          useCallStore
+            .getState()
+            .receiveOffer(data, callerInfo);
         });
       });
     });
 
+    // Receive call answer
     socket.on("call:answer", (data) => {
       import("./useCallStore").then(({ useCallStore }) => {
-        useCallStore.getState().handleAnswer(data);
+        useCallStore
+          .getState()
+          .handleAnswer(data);
       });
     });
 
+    // Receive ICE candidate
     socket.on("call:ice-candidate", (data) => {
       import("./useCallStore").then(({ useCallStore }) => {
-        useCallStore.getState().handleIceCandidate(data);
+        useCallStore
+          .getState()
+          .handleIceCandidate(data);
       });
     });
 
+    // Call ended
     socket.on("call:end", () => {
       import("./useCallStore").then(({ useCallStore }) => {
-        useCallStore.getState().resetCall();
+        useCallStore
+          .getState()
+          .resetCall();
       });
     });
 
+    // Call rejected
     socket.on("call:reject", () => {
       import("./useCallStore").then(({ useCallStore }) => {
-        useCallStore.getState().resetCall();
+        useCallStore
+          .getState()
+          .resetCall();
       });
     });
 
@@ -112,12 +154,13 @@ export const useAuthStore = create((set, get) => ({
   disconnectSocket: () => {
     const socket = get().socket;
 
-    if (socket?.connected) {
+    if (socket) {
       socket.disconnect();
     }
 
     set({
       socket: null,
+      onlineUsers: [],
     });
   },
 }));
