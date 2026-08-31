@@ -5,8 +5,8 @@
   "main": "index.js",
   "scripts": {
     "build": "rm -rf dist && cp -R src dist",
-    "dev": "nodemon src/index.js",
-    "start": "node src/index.js",
+    "dev": "nodemon src/index.mjs",
+    "start": "node src/index.mjs",
     "db:seed": "node src/seeds/user.seed.js"
   },
   "keywords": [],
