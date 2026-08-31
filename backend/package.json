@@ -2,7 +2,7 @@
   "name": "backend",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "src/index.mjs",
   "scripts": {
     "build": "rm -rf dist && cp -R src dist",
     "dev": "nodemon src/index.mjs",
@@ -19,7 +19,6 @@
     "cors": "^2.8.6",
     "cron": "^4.4.0",
     "dotenv": "^17.4.2",
-    "express": "^5.2.1",
     "mongoose": "^9.9.1",
     "multer": "^2.2.0",
     "socket.io": "^4.8.3"
