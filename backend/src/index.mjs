@@ -23,12 +23,43 @@ const FRONTEND_URL =
 const publicDir = path.join(process.cwd(), "public");
 
 // --------------------------------------------------
+// Vercel MongoDB connection
+// --------------------------------------------------
+
+let dbConnected = false;
+
+async function ensureDBConnection() {
+  if (!dbConnected) {
+    await connectDB();
+    dbConnected = true;
+
+    console.log("MongoDB connected on Vercel");
+  }
+}
+
+// --------------------------------------------------
 // Middleware
 // --------------------------------------------------
 
+// Clerk webhook MUST receive raw body
 app.use(
   "/api/webhooks/clerk",
   express.raw({ type: "application/json" }),
+  async (req, res, next) => {
+    if (process.env.VERCEL) {
+      try {
+        await ensureDBConnection();
+      } catch (error) {
+        console.error("MongoDB connection failed:", error);
+
+        return res.status(500).json({
+          error: "Database connection failed",
+        });
+      }
+    }
+
+    next();
+  },
   clerkWebhook
 );
 
@@ -57,8 +88,34 @@ app.use((req, res, next) => {
 // --------------------------------------------------
 
 app.get("/health", (req, res) => {
-  res.status(200).json({ ok: true });
+  res.status(200).json({
+    ok: true,
+  });
 });
+
+// --------------------------------------------------
+// MongoDB connection for Vercel API requests
+// --------------------------------------------------
+
+if (process.env.VERCEL) {
+  app.use(async (req, res, next) => {
+    // Health check does not need MongoDB
+    if (req.path === "/health") {
+      return next();
+    }
+
+    try {
+      await ensureDBConnection();
+      next();
+    } catch (error) {
+      console.error("MongoDB connection failed:", error);
+
+      res.status(500).json({
+        error: "Database connection failed",
+      });
+    }
+  });
+}
 
 // --------------------------------------------------
 // Routes
@@ -91,7 +148,7 @@ if (fs.existsSync(publicDir)) {
 }
 
 // --------------------------------------------------
-// Render / Local
+// Local / Render
 // --------------------------------------------------
 
 if (!process.env.VERCEL) {
@@ -108,38 +165,16 @@ if (!process.env.VERCEL) {
         job.start();
       }
     } catch (error) {
-      console.error("Database connection failed:", error);
+      console.error(
+        "Database connection failed:",
+        error
+      );
     }
   });
 }
 
 // --------------------------------------------------
-// Vercel
+// Vercel export
 // --------------------------------------------------
-
-let dbConnected = false;
-
-async function ensureDBConnection() {
-  if (!dbConnected) {
-    await connectDB();
-    dbConnected = true;
-    console.log("MongoDB connected on Vercel");
-  }
-}
-
-// Wrap requests so DB is available before API routes execute
-if (process.env.VERCEL) {
-  app.use(async (req, res, next) => {
-    try {
-      await ensureDBConnection();
-      next();
-    } catch (error) {
-      console.error("MongoDB connection failed:", error);
-      res.status(500).json({
-        error: "Database connection failed",
-      });
-    }
-  });
-}
 
 export default app;
