@@ -78,7 +78,7 @@ export function ChatComposer() {
         <TextArea
           fullWidth
           variant="secondary"
-          placeholder="iMessage"
+          placeholder="Type your message"
           rows={1}
           value={composerText}
           onChange={handleComposerTextChange}
