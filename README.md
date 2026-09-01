@@ -4,7 +4,7 @@
 
 GOLPO is a full-stack real-time messaging application designed with a modern, responsive interface and a scalable client-server architecture. It supports secure authentication, real-time messaging, image sharing, customizable themes and wallpapers, online presence indicators, and more.
 
-live : https://golpo-3zbx.onrender.com/
+live : https://golpooo.vercel.app/
 ---
 
 ## ✨ Features
