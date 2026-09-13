@@ -1,0 +1,204 @@
+import { create } from "zustand";
+import toast from "react-hot-toast";
+
+import { axiosInstance } from "../lib/axios";
+import { useAuthStore } from "./useAuthStore";
+
+// Kept in sync with backend MAX_GROUP_MEMBERS (models/group.model.js).
+export const MAX_GROUP_MEMBERS = 6;
+
+// If we're on a call for a group we just lost access to (removed, left
+// elsewhere, or the group was deleted), there's no one left we're
+// allowed to be connected to — leave the call instead of lingering in it.
+function forceLeaveGroupCall(groupId) {
+  import("./useGroupCallStore").then(({ useGroupCallStore }) => {
+    useGroupCallStore.getState().forceLeaveForGroup(groupId);
+  });
+}
+
+function removeGroupLocally(state, groupId) {
+  return {
+    groups: state.groups.filter((group) => group._id !== groupId),
+    activeGroupId: state.activeGroupId === groupId ? null : state.activeGroupId,
+    groupMessages: state.activeGroupId === groupId ? [] : state.groupMessages,
+  };
+}
+
+export const useGroupStore = create((set, get) => ({
+  groups: [],
+  activeGroupId: null,
+  groupMessages: [],
+  isGroupsLoading: false,
+  isGroupMessagesLoading: false,
+  isSendingGroupMedia: false,
+
+  getGroups: async () => {
+    set({ isGroupsLoading: true });
+    try {
+      const res = await axiosInstance.get("/groups");
+      set({ groups: res.data });
+    } catch (error) {
+      console.log("Error in getGroups", error.message);
+    } finally {
+      set({ isGroupsLoading: false });
+    }
+  },
+
+  getGroupMessages: async (groupId) => {
+    if (!groupId) return;
+    set({ isGroupMessagesLoading: true });
+    try {
+      const res = await axiosInstance.get(`/groups/${groupId}/messages`);
+      set({ groupMessages: res.data });
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Failed to load messages");
+    } finally {
+      set({ isGroupMessagesLoading: false });
+    }
+  },
+
+  createGroup: async ({ name, memberIds }) => {
+    try {
+      const res = await axiosInstance.post("/groups", { name, memberIds });
+      set((state) => ({
+        groups: state.groups.some((group) => group._id === res.data._id)
+          ? state.groups
+          : [res.data, ...state.groups],
+      }));
+      get().setActiveGroupId(res.data._id);
+      return res.data;
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Failed to create group");
+      return null;
+    }
+  },
+
+  sendGroupMessage: async (messageData) => {
+    const { activeGroupId, groupMessages } = get();
+    if (!activeGroupId) return false;
+
+    try {
+      const res = await axiosInstance.post(`/groups/${activeGroupId}/messages`, messageData);
+      set({ groupMessages: [...groupMessages, res.data] });
+      get().getGroups();
+      return true;
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Failed to send message");
+      return false;
+    }
+  },
+
+  sendGroupTextMessage: async (groupId, text) => {
+    const messageText = (text ?? "").trim();
+    if (!groupId || !messageText) return false;
+
+    return get().sendGroupMessage({ text: messageText });
+  },
+
+  sendGroupMediaMessage: async ({ groupId, file }) => {
+    if (!groupId || !file) return false;
+
+    const formData = new FormData();
+    formData.append("media", file);
+
+    set({ isSendingGroupMedia: true });
+    try {
+      return await get().sendGroupMessage(formData);
+    } finally {
+      set({ isSendingGroupMedia: false });
+    }
+  },
+
+  // Live messages for whichever group is currently open. Own messages are
+  // skipped here since sendGroupMessage already appended them locally —
+  // this mirrors useChatStore.subscribeToMessages' senderId filter.
+  subscribeToGroupMessages: (groupId) => {
+    if (!groupId) return;
+
+    const socket = useAuthStore.getState().socket;
+    if (!socket) return;
+
+    socket.off("newGroupMessage");
+    socket.on("newGroupMessage", (newMessage) => {
+      const authUser = useAuthStore.getState().authUser;
+      const senderId = newMessage.senderId?._id || newMessage.senderId;
+
+      if (String(senderId) === String(authUser?._id)) return;
+      if (String(newMessage.groupId) !== String(get().activeGroupId)) return;
+
+      set({ groupMessages: [...get().groupMessages, newMessage] });
+    });
+  },
+
+  unsubscribeFromGroupMessages: () => {
+    const socket = useAuthStore.getState().socket;
+    socket?.off("newGroupMessage");
+  },
+
+  // Membership/roster events — these apply regardless of which thread is
+  // open, so this subscribes once per session (see ChatPage) rather than
+  // per active group.
+  subscribeToGroupEvents: () => {
+    const socket = useAuthStore.getState().socket;
+    if (!socket) return;
+
+    socket.off("groupCreated");
+    socket.off("groupUpdated");
+    socket.off("groupDeleted");
+    socket.off("removedFromGroup");
+    socket.off("memberLeft");
+
+    socket.on("groupCreated", (group) => {
+      set((state) =>
+        state.groups.some((existing) => existing._id === group._id)
+          ? state
+          : { groups: [group, ...state.groups] },
+      );
+    });
+
+    socket.on("groupUpdated", (group) => {
+      set((state) => ({
+        groups: state.groups.map((existing) => (existing._id === group._id ? group : existing)),
+      }));
+    });
+
+    socket.on("groupDeleted", ({ groupId }) => {
+      set((state) => removeGroupLocally(state, groupId));
+      forceLeaveGroupCall(groupId);
+    });
+
+    socket.on("removedFromGroup", ({ groupId, memberId }) => {
+      const authUserId = useAuthStore.getState().authUser?._id;
+      if (String(memberId) !== String(authUserId)) return; // someone else was removed
+      set((state) => removeGroupLocally(state, groupId));
+      forceLeaveGroupCall(groupId);
+    });
+
+    socket.on("memberLeft", ({ groupId, memberId }) => {
+      const authUserId = useAuthStore.getState().authUser?._id;
+      if (String(memberId) !== String(authUserId)) return; // someone else left
+      set((state) => removeGroupLocally(state, groupId));
+      forceLeaveGroupCall(groupId);
+    });
+  },
+
+  unsubscribeFromGroupEvents: () => {
+    const socket = useAuthStore.getState().socket;
+    socket?.off("groupCreated");
+    socket?.off("groupUpdated");
+    socket?.off("groupDeleted");
+    socket?.off("removedFromGroup");
+    socket?.off("memberLeft");
+  },
+
+  setActiveGroupId: (groupId) => {
+    if (groupId) {
+      import("./useChatStore").then(({ useChatStore }) => {
+        useChatStore.getState().setActiveConversationId(null);
+      });
+    }
+    set({ activeGroupId: groupId, groupMessages: [] });
+  },
+
+  clearActiveGroup: () => set({ activeGroupId: null, groupMessages: [] }),
+}));

@@ -18,6 +18,9 @@ export function MessageBubble({ message }) {
             : "rounded-bl-md bg-surface"
         }`}
       >
+        {message.senderName ? (
+          <p className="mb-0.5 text-[12px] font-semibold text-accent">{message.senderName}</p>
+        ) : null}
         {hasImage ? (
           <img
             src={withTransform(message.imageUrl, IMAGE_TRANSFORM)}

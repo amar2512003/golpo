@@ -1,12 +1,15 @@
+import { useState } from "react";
 import { getInitials, useSelectedConversation } from "../../hooks/useSelectedConversation";
 import { useAuthStore } from "../../store/useAuthStore";
 import { useChatStore } from "../../store/useChatStore";
+import { useGroupStore } from "../../store/useGroupStore";
 import { APP_NAME, AppLogo } from "../AppLogo";
 import { UserButton } from "@clerk/react";
 
-import { SearchField, Tabs } from "@heroui/react";
-import { MessageSquareIcon, UsersIcon } from "lucide-react";
+import { Button, SearchField, Tabs } from "@heroui/react";
+import { MessageSquareIcon, PlusIcon, UsersIcon, Users2Icon } from "lucide-react";
 import { ConversationRow } from "./ConversationRow";
+import { CreateGroupModal } from "./CreateGroupModal";
 
 function mapUserForList(user, onlineUsers) {
   return {
@@ -25,10 +28,20 @@ function mapUserForList(user, onlineUsers) {
   };
 }
 
+function mapGroupForList(group) {
+  const memberCount = group.members?.length || 0;
+  return {
+    id: group._id,
+    name: group.name,
+    avatarUrl: group.groupPic,
+    initials: getInitials(group.name),
+    subtitle: `${memberCount} member${memberCount === 1 ? "" : "s"}`,
+    showOnlineIndicator: false,
+  };
+}
+
 function ChatSidebar() {
   const conversations = useChatStore((state) => state.conversations);
-
-  console.log(conversations);
   const users = useChatStore((state) => state.users);
 
   const searchQuery = useChatStore((state) => state.searchQuery);
@@ -39,14 +52,20 @@ function ChatSidebar() {
 
   const setActiveConversationId = useChatStore((state) => state.setActiveConversationId);
 
+  const groups = useGroupStore((state) => state.groups);
+  const setActiveGroupId = useGroupStore((state) => state.setActiveGroupId);
+
   const onlineUsers = useAuthStore((state) => state.onlineUsers);
 
-  const { activeConversationId, isLargeScreen } = useSelectedConversation();
+  const { activeConversationId, activeConversationType, isLargeScreen } = useSelectedConversation();
+
+  const [isCreateGroupOpen, setIsCreateGroupOpen] = useState(false);
 
   const normalizedSearchQuery = searchQuery.trim().toLowerCase();
 
   const conversationUsers = conversations.map((user) => mapUserForList(user, onlineUsers));
   const allUsers = users.map((user) => mapUserForList(user, onlineUsers));
+  const groupItems = groups.map((group) => mapGroupForList(group));
 
   const filteredConversations = normalizedSearchQuery
     ? conversationUsers.filter((conversation) =>
@@ -57,6 +76,10 @@ function ChatSidebar() {
   const filteredUsers = normalizedSearchQuery
     ? allUsers.filter((user) => user.name.toLowerCase().includes(normalizedSearchQuery))
     : allUsers;
+
+  const filteredGroups = normalizedSearchQuery
+    ? groupItems.filter((group) => group.name.toLowerCase().includes(normalizedSearchQuery))
+    : groupItems;
 
   return (
     <aside
@@ -108,6 +131,10 @@ function ChatSidebar() {
               <MessageSquareIcon className="size-3.5 opacity-80" aria-hidden />
               Chats
             </Tabs.Tab>
+            <Tabs.Tab id="groups" className="flex-1 justify-center gap-1.5">
+              <Users2Icon className="size-3.5 opacity-80" aria-hidden />
+              Groups
+            </Tabs.Tab>
             <Tabs.Tab id="users" className="flex-1 justify-center gap-1.5">
               <UsersIcon className="size-3.5 opacity-80" aria-hidden />
               Users
@@ -128,8 +155,40 @@ function ChatSidebar() {
               <ConversationRow
                 key={conversation.id}
                 user={conversation}
-                selected={conversation.id === activeConversationId}
+                selected={
+                  activeConversationType === "dm" && conversation.id === activeConversationId
+                }
                 onSelect={() => setActiveConversationId(conversation.id)}
+              />
+            ))
+          )}
+        </Tabs.Panel>
+
+        <Tabs.Panel id="groups" className="flex-1 overflow-x-hidden overflow-y-auto outline-none">
+          <div className="flex items-center justify-between border-b border-border px-3 py-2">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted">Your groups</p>
+            <Button
+              variant="ghost"
+              size="sm"
+              isIconOnly
+              aria-label="Create group"
+              onPress={() => setIsCreateGroupOpen(true)}
+            >
+              <PlusIcon className="size-4" />
+            </Button>
+          </div>
+
+          {filteredGroups.length === 0 ? (
+            <p className="px-4 py-6 text-center text-sm text-muted">
+              No groups yet. Create one to get started.
+            </p>
+          ) : (
+            filteredGroups.map((group) => (
+              <ConversationRow
+                key={group.id}
+                user={group}
+                selected={activeConversationType === "group" && group.id === activeConversationId}
+                onSelect={() => setActiveGroupId(group.id)}
               />
             ))
           )}
@@ -143,13 +202,17 @@ function ChatSidebar() {
               <ConversationRow
                 key={user.conversationId}
                 user={user}
-                selected={user.conversationId === activeConversationId}
+                selected={activeConversationType === "dm" && user.conversationId === activeConversationId}
                 onSelect={() => setActiveConversationId(user.conversationId)}
               />
             ))
           )}
         </Tabs.Panel>
       </Tabs>
+
+      {isCreateGroupOpen ? (
+        <CreateGroupModal onClose={() => setIsCreateGroupOpen(false)} />
+      ) : null}
     </aside>
   );
 }

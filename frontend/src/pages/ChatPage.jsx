@@ -1,5 +1,6 @@
 import { useWallpaper } from "../context/wallpaper";
 import { useChatStore } from "../store/useChatStore";
+import { useGroupStore } from "../store/useGroupStore";
 import { useSelectedConversation } from "../hooks/useSelectedConversation";
 import { useEffect } from "react";
 import ChatSidebar from "../components/chat/ChatSidebar";
@@ -7,6 +8,7 @@ import { ChatHeader } from "../components/chat/ChatHeader";
 import { MessageList } from "../components/chat/MessageList";
 import { ChatComposer } from "../components/chat/ChatComposer";
 import { VideoCallModal } from "../components/chat/VideoCallModal";
+import { GroupCallModal } from "../components/chat/GroupCallModal";
 
 function ChatPage() {
   const { frameStyle } = useWallpaper();
@@ -17,22 +19,48 @@ function ChatPage() {
   const subscribeToMessages = useChatStore((state) => state.subscribeToMessages);
   const unsubscribeFromMessages = useChatStore((state) => state.unsubscribeFromMessages);
 
-  const { activeConversation, activeConversationId, isLargeScreen } = useSelectedConversation();
+  const getGroups = useGroupStore((state) => state.getGroups);
+  const getGroupMessages = useGroupStore((state) => state.getGroupMessages);
+  const subscribeToGroupMessages = useGroupStore((state) => state.subscribeToGroupMessages);
+  const unsubscribeFromGroupMessages = useGroupStore((state) => state.unsubscribeFromGroupMessages);
+  const subscribeToGroupEvents = useGroupStore((state) => state.subscribeToGroupEvents);
+  const unsubscribeFromGroupEvents = useGroupStore((state) => state.unsubscribeFromGroupEvents);
+  const activeGroupId = useGroupStore((state) => state.activeGroupId);
+
+  const { activeConversation, activeConversationId, activeConversationType, isLargeScreen } =
+    useSelectedConversation();
 
   useEffect(() => {
     getUsers();
     getConversations();
-  }, [getConversations, getUsers]);
+    getGroups();
+  }, [getConversations, getUsers, getGroups]);
+
+  // Roster/membership events (create/update/delete/removed/left) apply no
+  // matter which thread is open, so this subscribes once per session.
+  useEffect(() => {
+    subscribeToGroupEvents();
+    return () => unsubscribeFromGroupEvents();
+  }, [subscribeToGroupEvents, unsubscribeFromGroupEvents]);
 
   useEffect(() => {
-    if (!activeConversationId) return;
+    if (!activeConversationId || activeConversationType !== "dm") return;
 
     getMessages(activeConversationId);
     subscribeToMessages(activeConversationId);
 
     // cleanup
     return () => unsubscribeFromMessages();
-  }, [getMessages, activeConversationId, subscribeToMessages, unsubscribeFromMessages]);
+  }, [getMessages, activeConversationId, activeConversationType, subscribeToMessages, unsubscribeFromMessages]);
+
+  useEffect(() => {
+    if (!activeGroupId) return;
+
+    getGroupMessages(activeGroupId);
+    subscribeToGroupMessages(activeGroupId);
+
+    return () => unsubscribeFromGroupMessages();
+  }, [activeGroupId, getGroupMessages, subscribeToGroupMessages, unsubscribeFromGroupMessages]);
 
   return (
     <>
@@ -57,6 +85,7 @@ function ChatPage() {
       </div>
 
       <VideoCallModal />
+      <GroupCallModal />
     </>
   );
 }

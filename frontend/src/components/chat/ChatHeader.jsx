@@ -15,7 +15,9 @@ import { AvatarWithOnlineIndicator } from "./AvatarWithOnlineIndicator";
 import { ThemeToggle } from "../ThemeToggle";
 
 import { useChatStore } from "../../store/useChatStore";
+import { useGroupStore } from "../../store/useGroupStore";
 import { useCallStore } from "../../store/useCallStore";
+import { useGroupCallStore } from "../../store/useGroupCallStore";
 import { useSelectedConversation } from "../../hooks/useSelectedConversation";
 
 function getFullscreenElement() {
@@ -48,9 +50,19 @@ export function ChatHeader() {
   const isSoundEnabled = useChatStore((state) => state.isSoundEnabled);
   const setActiveConversationId = useChatStore((state) => state.setActiveConversationId);
   const setSoundEnabled = useChatStore((state) => state.setSoundEnabled);
+  const clearActiveGroup = useGroupStore((state) => state.clearActiveGroup);
   const startCall = useCallStore((state) => state.startCall);
+  const groupCallStatus = useGroupCallStore((state) => state.status);
+  const activeGroupCallId = useGroupCallStore((state) => state.groupId);
+  const joinGroupCall = useGroupCallStore((state) => state.joinCall);
 
-  const { activeConversation, isLargeScreen } = useSelectedConversation();
+  const { activeConversation, activeConversationType, isLargeScreen } = useSelectedConversation();
+  const isGroup = activeConversationType === "group";
+
+  const closeActiveThread = () => {
+    if (isGroup) clearActiveGroup();
+    else setActiveConversationId(null);
+  };
 
   const [isFullscreen, setIsFullscreen] = useState(false);
 
@@ -109,6 +121,16 @@ export function ChatHeader() {
     );
   };
 
+  const handleJoinGroupVideoCall = () => {
+    if (!activeConversation || !isGroup) return;
+    joinGroupCall({ _id: activeConversation.id, name: activeConversation.peer.name }, "video");
+  };
+
+  const handleJoinGroupAudioCall = () => {
+    if (!activeConversation || !isGroup) return;
+    joinGroupCall({ _id: activeConversation.id, name: activeConversation.peer.name }, "audio");
+  };
+
   return (
     <header className="sticky top-0 z-10 flex shrink-0 flex-wrap items-center gap-1 border-b border-border px-1.5 py-1.5 sm:gap-2 sm:px-2 sm:py-2">
       {activeConversation && !isLargeScreen ? (
@@ -117,7 +139,7 @@ export function ChatHeader() {
           size="sm"
           isIconOnly
           className="shrink-0"
-          onPress={() => setActiveConversationId(null)}
+          onPress={closeActiveThread}
         >
           <ChevronLeftIcon className="size-6" strokeWidth={2.25} />
         </Button>
@@ -142,7 +164,9 @@ export function ChatHeader() {
               {activeConversation.peer.name}
             </p>
             <p className="truncate text-xs text-muted">
-              {activeConversation.peer.isOnline ? (
+              {isGroup ? (
+                activeConversation.peer.subtitle
+              ) : activeConversation.peer.isOnline ? (
                 <span className="font-medium text-success">Online</span>
               ) : (
                 "Offline"
@@ -179,7 +203,7 @@ export function ChatHeader() {
           )}
         </Button>
 
-        {activeConversation ? (
+        {activeConversation && !isGroup ? (
           <>
             <Button
               variant="ghost"
@@ -199,6 +223,34 @@ export function ChatHeader() {
               className="shrink-0"
               aria-label="Start video call"
               onPress={handleStartCall}
+            >
+              <VideoIcon className="size-5.5" strokeWidth={2} aria-hidden />
+            </Button>
+          </>
+        ) : null}
+
+        {activeConversation && isGroup ? (
+          <>
+            <Button
+              variant="ghost"
+              size="sm"
+              isIconOnly
+              className="shrink-0"
+              aria-label="Start or join group audio call"
+              isDisabled={groupCallStatus !== "idle" && activeGroupCallId !== activeConversation.id}
+              onPress={handleJoinGroupAudioCall}
+            >
+              <PhoneIcon className="size-5.5" strokeWidth={2} aria-hidden />
+            </Button>
+
+            <Button
+              variant="ghost"
+              size="sm"
+              isIconOnly
+              className="shrink-0"
+              aria-label="Start or join group video call"
+              isDisabled={groupCallStatus !== "idle" && activeGroupCallId !== activeConversation.id}
+              onPress={handleJoinGroupVideoCall}
             >
               <VideoIcon className="size-5.5" strokeWidth={2} aria-hidden />
             </Button>
@@ -227,7 +279,7 @@ export function ChatHeader() {
             isIconOnly
             className="shrink-0"
             aria-label="Close chat"
-            onPress={() => setActiveConversationId(null)}
+            onPress={closeActiveThread}
           >
             <XIcon className="size-5.5" strokeWidth={2} aria-hidden />
           </Button>

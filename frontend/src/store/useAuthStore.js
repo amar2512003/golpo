@@ -60,8 +60,22 @@ export const useAuthStore = create((set, get) => ({
 
     // ---------------- Socket Events ----------------
 
+    // "connect" fires both for the very first connection and for every
+    // automatic reconnect socket.io does after a network drop. We only
+    // want to react to the latter — a real reconnect means any active
+    // group call's peer connections were negotiated over a signaling
+    // session that's now gone and need to be rebuilt.
+    let hasConnectedBefore = false;
+
     socket.on("connect", () => {
       console.log("Socket connected:", socket.id);
+
+      if (hasConnectedBefore) {
+        import("./useGroupCallStore").then(({ useGroupCallStore }) => {
+          useGroupCallStore.getState().handleSocketReconnect();
+        });
+      }
+      hasConnectedBefore = true;
     });
 
     socket.on("connect_error", (error) => {
@@ -82,6 +96,13 @@ export const useAuthStore = create((set, get) => ({
 
     // Receive call offer
     socket.on("call:offer", (data) => {
+      if (data.groupId) {
+        import("./useGroupCallStore").then(({ useGroupCallStore }) => {
+          useGroupCallStore.getState().handleOffer(data);
+        });
+        return;
+      }
+
       import("./useCallStore").then(({ useCallStore }) => {
         import("./useChatStore").then(({ useChatStore }) => {
           const { users, conversations } =
@@ -114,6 +135,13 @@ export const useAuthStore = create((set, get) => ({
 
     // Receive call answer
     socket.on("call:answer", (data) => {
+      if (data.groupId) {
+        import("./useGroupCallStore").then(({ useGroupCallStore }) => {
+          useGroupCallStore.getState().handleAnswer(data);
+        });
+        return;
+      }
+
       import("./useCallStore").then(({ useCallStore }) => {
         useCallStore
           .getState()
@@ -123,6 +151,13 @@ export const useAuthStore = create((set, get) => ({
 
     // Receive ICE candidate
     socket.on("call:ice-candidate", (data) => {
+      if (data.groupId) {
+        import("./useGroupCallStore").then(({ useGroupCallStore }) => {
+          useGroupCallStore.getState().handleIceCandidate(data);
+        });
+        return;
+      }
+
       import("./useCallStore").then(({ useCallStore }) => {
         useCallStore
           .getState()
@@ -148,6 +183,32 @@ export const useAuthStore = create((set, get) => ({
       });
     });
 
+    // ---------------- Group Call Signaling (mesh) ----------------
+
+    socket.on("call:group-user-joined", (data) => {
+      import("./useGroupCallStore").then(({ useGroupCallStore }) => {
+        useGroupCallStore.getState().handleUserJoined(data);
+      });
+    });
+
+    socket.on("call:group-user-left", (data) => {
+      import("./useGroupCallStore").then(({ useGroupCallStore }) => {
+        useGroupCallStore.getState().handleUserLeft(data);
+      });
+    });
+
+    socket.on("call:group-ended", () => {
+      import("./useGroupCallStore").then(({ useGroupCallStore }) => {
+        useGroupCallStore.getState().handleCallEnded();
+      });
+    });
+
+    socket.on("call:group-media-state", (data) => {
+      import("./useGroupCallStore").then(({ useGroupCallStore }) => {
+        useGroupCallStore.getState().handleRemoteMediaState(data);
+      });
+    });
+
     // ---------------- End WebRTC Signaling ----------------
   },
 
@@ -157,6 +218,12 @@ export const useAuthStore = create((set, get) => ({
     if (socket) {
       socket.disconnect();
     }
+
+    import("./useGroupCallStore").then(({ useGroupCallStore }) => {
+      if (useGroupCallStore.getState().status !== "idle") {
+        useGroupCallStore.getState()._teardown();
+      }
+    });
 
     set({
       socket: null,

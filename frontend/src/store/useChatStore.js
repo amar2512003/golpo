@@ -105,6 +105,15 @@ export const useChatStore = create(
       setSelectedUser: (selectedUser) => set({ selectedUser }),
 
       setActiveConversationId: (activeConversationId) => {
+        // Opening a DM means any open group thread should close — the two
+        // stores stay in sync via dynamic import (mirrors the pattern
+        // useAuthStore already uses to talk to useCallStore).
+        if (activeConversationId) {
+          import("./useGroupStore").then(({ useGroupStore }) => {
+            useGroupStore.getState().clearActiveGroup();
+          });
+        }
+
         set((state) => ({
           activeConversationId,
           selectedUser:

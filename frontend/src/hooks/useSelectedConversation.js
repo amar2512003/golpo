@@ -1,6 +1,7 @@
 import { useMediaQuery } from "./useMediaQuery";
 import { formatMessageTime } from "../lib/utils";
 import { useChatStore } from "../store/useChatStore";
+import { useGroupStore } from "../store/useGroupStore";
 import { useAuthStore } from "../store/useAuthStore";
 
 // John Doe -> JD
@@ -30,6 +31,7 @@ function mapUserToConversation({ user, messages, authUser, onlineUsers }) {
 
   return {
     id: user._id,
+    isGroup: false,
     peer: {
       _id: user._id, // Added for WebRTC/video calling
       name: user.fullName,
@@ -42,16 +44,73 @@ function mapUserToConversation({ user, messages, authUser, onlineUsers }) {
   };
 }
 
+// Same idea as mapUserToConversation, but for a Group document + its
+// GroupMessage array. senderId on a group message is populated (it's a
+// full user doc minus clerkId), so we can pull a display name straight
+// off each message to label who sent it.
+function mapGroupToConversation({ group, messages, authUser }) {
+  const mappedMessages = messages.map((message) => {
+    const senderId = message.senderId?._id || message.senderId;
+    const isMe = String(senderId) === String(authUser?._id);
+
+    return {
+      id: message._id,
+      role: isMe ? "me" : "them",
+      text: message.text || "",
+      time: formatMessageTime(message.createdAt),
+      imageUrl: message.image,
+      videoUrl: message.video,
+      senderName: isMe ? null : message.senderId?.fullName,
+    };
+  });
+
+  const memberCount = group.members?.length || 0;
+
+  return {
+    id: group._id,
+    isGroup: true,
+    members: group.members,
+    admin: group.admin,
+    peer: {
+      _id: group._id,
+      name: group.name,
+      subtitle: `${memberCount} member${memberCount === 1 ? "" : "s"}`,
+      isOnline: true,
+      avatarUrl: group.groupPic,
+      initials: getInitials(group.name),
+    },
+    messages: mappedMessages,
+  };
+}
+
 export function useSelectedConversation() {
   const activeConversationId = useChatStore((state) => state.activeConversationId);
   const conversations = useChatStore((state) => state.conversations);
   const users = useChatStore((state) => state.users);
   const messages = useChatStore((state) => state.messages);
 
+  const activeGroupId = useGroupStore((state) => state.activeGroupId);
+  const groups = useGroupStore((state) => state.groups);
+  const groupMessages = useGroupStore((state) => state.groupMessages);
+
   const authUser = useAuthStore((state) => state.authUser);
   const onlineUsers = useAuthStore((state) => state.onlineUsers);
 
   const isLargeScreen = useMediaQuery("(min-width: 1024px)");
+
+  if (activeGroupId) {
+    const group = groups.find((g) => g._id === activeGroupId);
+    const activeConversation = group
+      ? mapGroupToConversation({ group, messages: groupMessages, authUser })
+      : null;
+
+    return {
+      activeConversation,
+      activeConversationId: activeGroupId,
+      activeConversationType: "group",
+      isLargeScreen,
+    };
+  }
 
   const selectedUser = activeConversationId
     ? users.find((user) => user._id === activeConversationId) ||
@@ -70,6 +129,7 @@ export function useSelectedConversation() {
   return {
     activeConversation,
     activeConversationId,
+    activeConversationType: "dm",
     isLargeScreen,
   };
 }
