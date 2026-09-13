@@ -2,7 +2,8 @@ import express from "express";
 import {
   getConversationsForSidebar,
   getMessages,
-  getUsersForSidebar,
+  getUserById,
+  searchUserByEmail,
   sendMessage,
 } from "../controllers/message.controller.js";
 import { protectRoute } from "../middleware/auth.middleware.js";
@@ -12,7 +13,10 @@ const router = express.Router();
 
 router.use(protectRoute);
 
-router.get("/users", getUsersForSidebar);
+// Order matters: "search" is a literal path, so it has to be registered
+// before the "/:id" param route below or it'd be swallowed as an id.
+router.get("/users/search", searchUserByEmail);
+router.get("/users/:id", getUserById);
 router.get("/conversations", getConversationsForSidebar);
 router.get("/:id", getMessages);
 router.post("/send/:id", upload.single("media"), sendMessage);

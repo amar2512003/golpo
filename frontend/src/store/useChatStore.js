@@ -8,12 +8,15 @@ import toast from "react-hot-toast";
 export const useChatStore = create(
   persist(
     (set, get) => ({
+      // Cache of users we're actually allowed to know about: anyone found
+      // via an exact email search, or resolved from an invite link. There
+      // is deliberately no "browse everyone" list any more — see
+      // searchUserByEmail.
       users: [],
       conversations: [],
       messages: [],
       selectedUser: null,
       isConversationsLoading: false,
-      isUsersLoading: false,
       isMessagesLoading: false,
       activeConversationId: null,
       searchQuery: "",
@@ -22,21 +25,67 @@ export const useChatStore = create(
       isSoundEnabled: true,
       isSendingMedia: false,
 
-      getUsers: async () => {
-        set({ isUsersLoading: true });
+      // Email search state for the Users tab.
+      userSearchQuery: "",
+      isSearchingUser: false,
+      userSearchResult: null,
+      userSearchError: "",
+
+      // Adds/updates one user in the local cache — used whenever we learn
+      // a profile via search or an invite link, so lookups elsewhere
+      // (selected conversation, composer, etc.) can find them by id.
+      _cacheUser: (user) => {
+        if (!user?._id) return;
+        set((state) => ({
+          users: state.users.some((existing) => existing._id === user._id)
+            ? state.users.map((existing) => (existing._id === user._id ? user : existing))
+            : [...state.users, user],
+        }));
+      },
+
+      setUserSearchQuery: (userSearchQuery) => set({ userSearchQuery }),
+
+      clearUserSearch: () =>
+        set({ userSearchQuery: "", userSearchResult: null, userSearchError: "", isSearchingUser: false }),
+
+      // Exact, case-insensitive email lookup — the only way to find
+      // someone you're not already talking to. Deliberately doesn't
+      // accept partial matches so it can't be used to enumerate users.
+      searchUserByEmail: async (email) => {
+        const trimmedEmail = (email ?? "").trim();
+        if (!trimmedEmail) return null;
+
+        set({ isSearchingUser: true, userSearchResult: null, userSearchError: "" });
         try {
-          const res = await axiosInstance.get("/messages/users");
-          set((state) => ({
-            users: res.data,
-            selectedUser:
-              state.selectedUser && res.data.some((user) => user._id === state.selectedUser._id)
-                ? state.selectedUser
-                : null,
-          }));
+          const res = await axiosInstance.get("/messages/users/search", {
+            params: { email: trimmedEmail },
+          });
+          get()._cacheUser(res.data);
+          set({ userSearchResult: res.data, userSearchError: "" });
+          return res.data;
         } catch (error) {
-          console.log("Error in get Users", error.message);
+          const message =
+            error.response?.status === 404
+              ? "No user found with that email"
+              : error.response?.data?.message || "Couldn't search for that user";
+          set({ userSearchResult: null, userSearchError: message });
+          return null;
         } finally {
-          set({ isUsersLoading: false });
+          set({ isSearchingUser: false });
+        }
+      },
+
+      // Resolves an invite link (`/invite/:userId`) into a profile we can
+      // start chatting with, caching it the same way a search result is.
+      getUserById: async (userId) => {
+        if (!userId) return null;
+        try {
+          const res = await axiosInstance.get(`/messages/users/${userId}`);
+          get()._cacheUser(res.data);
+          return res.data;
+        } catch (error) {
+          toast.error(error.response?.data?.message || "Couldn't open that invite link");
+          return null;
         }
       },
 

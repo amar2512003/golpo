@@ -16,7 +16,6 @@ function ChatPage() {
 
   const getConversations = useChatStore((state) => state.getConversations);
   const getMessages = useChatStore((state) => state.getMessages);
-  const getUsers = useChatStore((state) => state.getUsers);
   const subscribeToMessages = useChatStore((state) => state.subscribeToMessages);
   const unsubscribeFromMessages = useChatStore((state) => state.unsubscribeFromMessages);
 
@@ -32,10 +31,9 @@ function ChatPage() {
     useSelectedConversation();
 
   useEffect(() => {
-    getUsers();
     getConversations();
     getGroups();
-  }, [getConversations, getUsers, getGroups]);
+  }, [getConversations, getGroups]);
 
   // Roster/membership events (create/update/delete/removed/left) apply no
   // matter which thread is open, so this subscribes once per session.

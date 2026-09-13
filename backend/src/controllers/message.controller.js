@@ -3,15 +3,61 @@ import Message from "../models/message.model.js";
 import { hasImageKitConfig, uploadChatMedia } from "../lib/imagekit.js";
 import { getReceiverSocketId, io } from "../lib/socket.js";
 
-export async function getUsersForSidebar(req, res) {
+function escapeRegex(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// Privacy: there's no "browse everyone" endpoint any more. You can only
+// find someone if you already know their exact email — this is an exact,
+// case-insensitive match, not a partial/fuzzy search, so typing a few
+// characters can't be used to enumerate other users.
+export async function searchUserByEmail(req, res) {
   try {
     const loggedInUserId = req.user._id;
+    const email = (req.query.email || "").trim();
 
-    const filteredUsers = await User.find({ _id: { $ne: loggedInUserId } }).select("-clerkId");
+    if (!email) {
+      return res.status(400).json({ message: "Email is required" });
+    }
 
-    res.status(200).json(filteredUsers);
+    const user = await User.findOne({
+      _id: { $ne: loggedInUserId },
+      email: new RegExp(`^${escapeRegex(email)}$`, "i"),
+    }).select("-clerkId");
+
+    if (!user) {
+      return res.status(404).json({ message: "No user found with that email" });
+    }
+
+    res.status(200).json(user);
   } catch (error) {
-    console.error("Error in getUsersForSidebar:", error.message);
+    console.error("Error in searchUserByEmail:", error.message);
+    res.status(500).json({ message: "Internal server error" });
+  }
+}
+
+// Backs invite share-links (`/invite/:userId`) — resolving one just needs
+// enough of the target's profile to render the chat (name/avatar), not
+// their email, so that's left out here even though searchUserByEmail
+// returns it for the person who already typed it in themselves.
+export async function getUserById(req, res) {
+  try {
+    const { id } = req.params;
+    const loggedInUserId = req.user._id;
+
+    if (String(id) === String(loggedInUserId)) {
+      return res.status(400).json({ message: "That's your own invite link" });
+    }
+
+    const user = await User.findById(id).select("-clerkId -email");
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    res.status(200).json(user);
+  } catch (error) {
+    console.error("Error in getUserById:", error.message);
     res.status(500).json({ message: "Internal server error" });
   }
 }

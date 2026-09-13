@@ -6,6 +6,7 @@ import {
   LoaderIcon,
   LogOutIcon,
   PencilIcon,
+  SearchIcon,
   ShieldIcon,
   TrashIcon,
   UserPlusIcon,
@@ -30,7 +31,8 @@ export function GroupInfoModal({ groupId, onClose }) {
   const leaveGroupById = useGroupStore((state) => state.leaveGroupById);
   const deleteGroupById = useGroupStore((state) => state.deleteGroupById);
 
-  const users = useChatStore((state) => state.users);
+  const conversations = useChatStore((state) => state.conversations);
+  const searchUserByEmail = useChatStore((state) => state.searchUserByEmail);
   const authUser = useAuthStore((state) => state.authUser);
 
   const picInputRef = useRef(null);
@@ -40,7 +42,10 @@ export function GroupInfoModal({ groupId, onClose }) {
   const [nameDraft, setNameDraft] = useState("");
   const [isEditingDescription, setIsEditingDescription] = useState(false);
   const [descriptionDraft, setDescriptionDraft] = useState("");
-  const [selectedNewMemberIds, setSelectedNewMemberIds] = useState([]);
+  const [selectedNewMembers, setSelectedNewMembers] = useState([]); // full user objects
+  const [emailQuery, setEmailQuery] = useState("");
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchError, setSearchError] = useState("");
   const [isAddingMembers, setIsAddingMembers] = useState(false);
 
   // The group can vanish out from under this modal (deleted, or we/the
@@ -51,8 +56,16 @@ export function GroupInfoModal({ groupId, onClose }) {
 
   const isAdmin = idOf(group.admin) === idOf(authUser?._id);
   const memberIds = new Set(group.members.map((m) => idOf(m)));
-  const availableUsers = users.filter((u) => !memberIds.has(idOf(u._id)));
+  const selectedNewMemberIds = selectedNewMembers.map((m) => m._id);
   const remainingSlots = MAX_GROUP_MEMBERS - group.members.length;
+  const atCapacity = selectedNewMemberIds.length >= remainingSlots;
+
+  // Same rule as everywhere else now: you can only add someone by their
+  // exact email, or pick from people you already have a DM with — no
+  // browsing the full user base.
+  const suggestedContacts = conversations.filter(
+    (user) => !memberIds.has(idOf(user._id)) && !selectedNewMemberIds.includes(user._id),
+  );
 
   const startEditingName = () => {
     setNameDraft(group.name);
@@ -91,12 +104,35 @@ export function GroupInfoModal({ groupId, onClose }) {
     await updateGroupDetails(groupId, { groupPicFile: file });
   };
 
-  const toggleNewMember = (userId) => {
-    setSelectedNewMemberIds((prev) => {
-      if (prev.includes(userId)) return prev.filter((id) => id !== userId);
-      if (prev.length >= remainingSlots) return prev;
-      return [...prev, userId];
-    });
+  const addNewMember = (user) => {
+    if (memberIds.has(idOf(user._id)) || selectedNewMemberIds.includes(user._id) || atCapacity) return;
+    setSelectedNewMembers((prev) => [...prev, user]);
+  };
+
+  const removeNewMember = (userId) => {
+    setSelectedNewMembers((prev) => prev.filter((m) => m._id !== userId));
+  };
+
+  const handleEmailSearch = async (event) => {
+    event.preventDefault();
+    const trimmed = emailQuery.trim();
+    if (!trimmed || isSearching || atCapacity) return;
+
+    setIsSearching(true);
+    setSearchError("");
+    const found = await searchUserByEmail(trimmed);
+    setIsSearching(false);
+
+    if (!found) {
+      setSearchError("No user found with that email");
+      return;
+    }
+    if (memberIds.has(idOf(found._id))) {
+      setSearchError(`${found.fullName} is already in this group`);
+      return;
+    }
+    addNewMember(found);
+    setEmailQuery("");
   };
 
   const handleAddMembers = async () => {
@@ -105,7 +141,7 @@ export function GroupInfoModal({ groupId, onClose }) {
     const updated = await addGroupMembers(groupId, selectedNewMemberIds);
     setIsAddingMembers(false);
     if (updated) {
-      setSelectedNewMemberIds([]);
+      setSelectedNewMembers([]);
       setView("info");
     }
   };
@@ -162,22 +198,74 @@ export function GroupInfoModal({ groupId, onClose }) {
               <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted">
                 Members ({selectedNewMemberIds.length}/{remainingSlots})
               </p>
-              <div className="space-y-1">
-                {availableUsers.length === 0 ? (
-                  <p className="py-4 text-center text-sm text-muted">
-                    Everyone's already in this group.
+
+              {selectedNewMembers.length > 0 ? (
+                <div className="mb-3 flex flex-wrap gap-1.5">
+                  {selectedNewMembers.map((member) => (
+                    <span
+                      key={member._id}
+                      className="flex items-center gap-1.5 rounded-full bg-accent-soft py-1 pl-1 pr-2 text-xs font-medium"
+                    >
+                      <Avatar className="size-5">
+                        <Avatar.Image alt={member.fullName} src={member.profilePic} />
+                        <Avatar.Fallback className="text-[10px]">
+                          {getInitials(member.fullName)}
+                        </Avatar.Fallback>
+                      </Avatar>
+                      {member.fullName}
+                      <button
+                        type="button"
+                        onClick={() => removeNewMember(member._id)}
+                        aria-label={`Remove ${member.fullName}`}
+                      >
+                        <XIcon className="size-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+
+              <form onSubmit={handleEmailSearch} className="mb-3 flex items-center gap-2">
+                <input
+                  type="email"
+                  inputMode="email"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  value={emailQuery}
+                  onChange={(event) => setEmailQuery(event.target.value)}
+                  placeholder="Add by email"
+                  disabled={atCapacity}
+                  className="min-w-0 flex-1 rounded-xl border border-border bg-surface px-3 py-2 text-[14px] outline-none focus:ring-2 focus:ring-accent disabled:opacity-50"
+                />
+                <Button
+                  type="submit"
+                  size="sm"
+                  isIconOnly
+                  isDisabled={!emailQuery.trim() || isSearching || atCapacity}
+                  aria-label="Find by email"
+                >
+                  {isSearching ? (
+                    <LoaderIcon className="size-4 animate-spin" />
+                  ) : (
+                    <SearchIcon className="size-4" />
+                  )}
+                </Button>
+              </form>
+              {searchError ? <p className="mb-3 text-xs font-medium text-red-500">{searchError}</p> : null}
+
+              {suggestedContacts.length > 0 ? (
+                <>
+                  <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted">
+                    Or add someone you already chat with
                   </p>
-                ) : (
-                  availableUsers.map((user) => {
-                    const isSelected = selectedNewMemberIds.includes(user._id);
-                    return (
+                  <div className="space-y-1">
+                    {suggestedContacts.map((user) => (
                       <button
                         key={user._id}
                         type="button"
-                        onClick={() => toggleNewMember(user._id)}
-                        className={`flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left ${
-                          isSelected ? "bg-accent-soft" : ""
-                        }`}
+                        disabled={atCapacity}
+                        onClick={() => addNewMember(user)}
+                        className="flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left disabled:opacity-50"
                       >
                         <Avatar className="size-9 shrink-0">
                           <Avatar.Image alt={user.fullName} src={user.profilePic} />
@@ -188,14 +276,11 @@ export function GroupInfoModal({ groupId, onClose }) {
                         <span className="min-w-0 flex-1 truncate text-[14px] font-medium">
                           {user.fullName}
                         </span>
-                        {isSelected ? (
-                          <CheckIcon className="size-4 shrink-0 text-accent" aria-hidden />
-                        ) : null}
                       </button>
-                    );
-                  })
-                )}
-              </div>
+                    ))}
+                  </div>
+                </>
+              ) : null}
             </div>
             <div className="shrink-0 border-t border-border px-4 py-3">
               <Button

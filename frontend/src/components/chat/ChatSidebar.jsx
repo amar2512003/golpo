@@ -10,6 +10,7 @@ import { Button, SearchField, Tabs } from "@heroui/react";
 import { MessageSquareIcon, PlusIcon, UsersIcon, Users2Icon } from "lucide-react";
 import { ConversationRow } from "./ConversationRow";
 import { CreateGroupModal } from "./CreateGroupModal";
+import { UserSearchPanel } from "./UserSearchPanel";
 
 function mapUserForList(user, onlineUsers) {
   return {
@@ -43,7 +44,6 @@ function mapGroupForList(group, liveCall) {
 
 function ChatSidebar() {
   const conversations = useChatStore((state) => state.conversations);
-  const users = useChatStore((state) => state.users);
 
   const searchQuery = useChatStore((state) => state.searchQuery);
   const setSearchQuery = useChatStore((state) => state.setSearchQuery);
@@ -66,7 +66,6 @@ function ChatSidebar() {
   const normalizedSearchQuery = searchQuery.trim().toLowerCase();
 
   const conversationUsers = conversations.map((user) => mapUserForList(user, onlineUsers));
-  const allUsers = users.map((user) => mapUserForList(user, onlineUsers));
   const groupItems = groups.map((group) => mapGroupForList(group, activeGroupCalls[group._id]));
 
   const filteredConversations = normalizedSearchQuery
@@ -74,10 +73,6 @@ function ChatSidebar() {
         conversation.peer.name.toLowerCase().includes(normalizedSearchQuery),
       )
     : conversationUsers;
-
-  const filteredUsers = normalizedSearchQuery
-    ? allUsers.filter((user) => user.name.toLowerCase().includes(normalizedSearchQuery))
-    : allUsers;
 
   const filteredGroups = normalizedSearchQuery
     ? groupItems.filter((group) => group.name.toLowerCase().includes(normalizedSearchQuery))
@@ -121,7 +116,10 @@ function ChatSidebar() {
           >
             <SearchField.Group className="rounded-xl">
               <SearchField.SearchIcon />
-              <SearchField.Input placeholder="Search" />
+              <SearchField.Input
+                placeholder={sidebarTab === "users" ? "Find someone by email below" : "Search"}
+                disabled={sidebarTab === "users"}
+              />
               {searchQuery ? <SearchField.ClearButton /> : null}
             </SearchField.Group>
           </SearchField>
@@ -197,18 +195,7 @@ function ChatSidebar() {
         </Tabs.Panel>
 
         <Tabs.Panel id="users" className="flex-1 overflow-x-hidden overflow-y-auto outline-none">
-          {filteredUsers.length === 0 ? (
-            <p className="px-4 py-6 text-center text-sm text-muted">No people match your search.</p>
-          ) : (
-            filteredUsers.map((user) => (
-              <ConversationRow
-                key={user.conversationId}
-                user={user}
-                selected={activeConversationType === "dm" && user.conversationId === activeConversationId}
-                onSelect={() => setActiveConversationId(user.conversationId)}
-              />
-            ))
-          )}
+          <UserSearchPanel onOpenConversation={setActiveConversationId} />
         </Tabs.Panel>
       </Tabs>
 
