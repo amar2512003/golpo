@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { Avatar, Button } from "@heroui/react";
-import { LinkIcon, LoaderIcon, MessageCircleIcon, SearchIcon } from "lucide-react";
-import toast from "react-hot-toast";
+import { LoaderIcon, MessageCircleIcon, SearchIcon, Share2Icon } from "lucide-react";
 import { useChatStore } from "../../store/useChatStore";
 import { useAuthStore } from "../../store/useAuthStore";
 import { getInitials } from "../../hooks/useSelectedConversation";
+import { APP_NAME } from "../AppLogo";
+import { ShareSheet } from "../ShareSheet";
 
 // Replaces the old "browse every user" list. There's no directory any
 // more — you find someone by their exact email, or they find you through
@@ -21,10 +22,15 @@ export function UserSearchPanel({ onOpenConversation }) {
   const clearUserSearch = useChatStore((state) => state.clearUserSearch);
 
   const [hasSearched, setHasSearched] = useState(false);
+  const [isShareOpen, setIsShareOpen] = useState(false);
 
   const inviteLink = authUser?._id
     ? `${window.location.origin}/invite/${authUser._id}`
     : "";
+
+  const inviteBrief = authUser?.fullName
+    ? `${authUser.fullName} wants to chat with you on ${APP_NAME}. Tap the link to start messaging.`
+    : `Chat with me on ${APP_NAME} — tap the link to start messaging.`;
 
   const handleSearch = async (event) => {
     event.preventDefault();
@@ -38,16 +44,6 @@ export function UserSearchPanel({ onOpenConversation }) {
     setUserSearchQuery(event.target.value);
     if (hasSearched) setHasSearched(false);
     if (userSearchResult || userSearchError) clearUserSearch();
-  };
-
-  const handleCopyInviteLink = async () => {
-    if (!inviteLink) return;
-    try {
-      await navigator.clipboard.writeText(inviteLink);
-      toast.success("Invite link copied");
-    } catch {
-      toast.error("Couldn't copy the link — copy it manually");
-    }
   };
 
   const handleMessage = () => {
@@ -124,11 +120,26 @@ export function UserSearchPanel({ onOpenConversation }) {
         <p className="mb-2 text-xs text-muted">
           Share your link — anyone who opens it can message you directly.
         </p>
-        <Button variant="ghost" fullWidth className="justify-start" onPress={handleCopyInviteLink}>
-          <LinkIcon className="size-4 shrink-0" aria-hidden />
-          <span className="truncate">Copy invite link</span>
+        <Button
+          variant="ghost"
+          fullWidth
+          className="justify-start"
+          onPress={() => setIsShareOpen(true)}
+          isDisabled={!inviteLink}
+        >
+          <Share2Icon className="size-4 shrink-0" aria-hidden />
+          <span className="truncate">Invite</span>
         </Button>
       </div>
+
+      {isShareOpen ? (
+        <ShareSheet
+          subject={`Join me on ${APP_NAME}`}
+          text={inviteBrief}
+          url={inviteLink}
+          onClose={() => setIsShareOpen(false)}
+        />
+      ) : null}
     </div>
   );
 }

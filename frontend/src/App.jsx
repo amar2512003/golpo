@@ -4,6 +4,7 @@ import { Navigate, Route, Routes } from "react-router";
 import ChatPage from "./pages/ChatPage";
 import AuthPage from "./pages/AuthPage";
 import InvitePage from "./pages/InvitePage";
+import GroupInvitePage from "./pages/GroupInvitePage";
 import { useAuth } from "@clerk/react";
 import PageLoader from "./components/PageLoader";
 import { useAuthStore } from "./store/useAuthStore";
@@ -39,6 +40,10 @@ function App() {
           <Route
             path="/invite/:userId"
             element={isSignedIn ? <InvitePage /> : <Navigate to={"/auth"} replace />}
+          />
+          <Route
+            path="/invite/group/:inviteCode"
+            element={isSignedIn ? <GroupInvitePage /> : <Navigate to={"/auth"} replace />}
           />
           <Route
             path="/auth"

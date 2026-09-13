@@ -7,6 +7,7 @@ import {
   LogOutIcon,
   PencilIcon,
   SearchIcon,
+  Share2Icon,
   ShieldIcon,
   TrashIcon,
   UserPlusIcon,
@@ -16,6 +17,8 @@ import { useChatStore } from "../../store/useChatStore";
 import { useGroupStore, MAX_GROUP_MEMBERS } from "../../store/useGroupStore";
 import { useAuthStore } from "../../store/useAuthStore";
 import { getInitials } from "../../hooks/useSelectedConversation";
+import { APP_NAME } from "../AppLogo";
+import { ShareSheet } from "../ShareSheet";
 
 function idOf(refOrId) {
   return String(refOrId?._id || refOrId || "");
@@ -47,6 +50,7 @@ export function GroupInfoModal({ groupId, onClose }) {
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState("");
   const [isAddingMembers, setIsAddingMembers] = useState(false);
+  const [isShareOpen, setIsShareOpen] = useState(false);
 
   // The group can vanish out from under this modal (deleted, or we/the
   // last member left) while it's still open — just render nothing rather
@@ -59,6 +63,14 @@ export function GroupInfoModal({ groupId, onClose }) {
   const selectedNewMemberIds = selectedNewMembers.map((m) => m._id);
   const remainingSlots = MAX_GROUP_MEMBERS - group.members.length;
   const atCapacity = selectedNewMemberIds.length >= remainingSlots;
+
+  const groupIsFull = group.members.length >= MAX_GROUP_MEMBERS;
+  const inviteLink = group.inviteCode
+    ? `${window.location.origin}/invite/group/${group.inviteCode}`
+    : "";
+  const inviteBrief = `You're invited to join "${group.name}" on ${APP_NAME}${
+    group.description ? ` — ${group.description}` : ""
+  }. Tap the link to join.`;
 
   // Same rule as everywhere else now: you can only add someone by their
   // exact email, or pick from people you already have a DM with — no
@@ -406,6 +418,21 @@ export function GroupInfoModal({ groupId, onClose }) {
             </div>
 
             <div className="mt-4">
+              <Button
+                variant="ghost"
+                fullWidth
+                className="justify-start"
+                onPress={() => setIsShareOpen(true)}
+                isDisabled={!inviteLink || groupIsFull}
+              >
+                <Share2Icon className="size-4 shrink-0" aria-hidden />
+                <span className="truncate">
+                  {groupIsFull ? "Group is full" : "Invite via link"}
+                </span>
+              </Button>
+            </div>
+
+            <div className="mt-4">
               <div className="mb-1 flex items-center justify-between">
                 <p className="text-xs font-medium uppercase tracking-wide text-muted">
                   Members ({group.members.length}/{MAX_GROUP_MEMBERS})
@@ -491,6 +518,15 @@ export function GroupInfoModal({ groupId, onClose }) {
           </div>
         )}
       </div>
+
+      {isShareOpen ? (
+        <ShareSheet
+          subject={`Join "${group.name}" on ${APP_NAME}`}
+          text={inviteBrief}
+          url={inviteLink}
+          onClose={() => setIsShareOpen(false)}
+        />
+      ) : null}
     </div>
   );
 }

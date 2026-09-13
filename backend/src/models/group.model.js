@@ -1,6 +1,11 @@
 import mongoose from "mongoose";
+import crypto from "crypto";
 
 export const MAX_GROUP_MEMBERS = 6;
+
+function generateInviteCode() {
+  return crypto.randomBytes(6).toString("hex");
+}
 
 const groupSchema = new mongoose.Schema(
   {
@@ -38,6 +43,17 @@ const groupSchema = new mongoose.Schema(
         ref: "User",
       },
     ],
+    // Shareable "join this group" token used by the invite link
+    // (/invite/group/:inviteCode). Anyone holding a valid, non-full
+    // group's code can join themselves — there's no admin approval step.
+    // `sparse` so pre-existing groups without one yet (see the backfill
+    // script) don't collide on the unique index before it's set.
+    inviteCode: {
+      type: String,
+      unique: true,
+      sparse: true,
+      default: generateInviteCode,
+    },
   },
   { timestamps: true },
 );

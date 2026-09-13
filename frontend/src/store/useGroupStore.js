@@ -68,6 +68,53 @@ export const useGroupStore = create((set, get) => ({
     }
   },
 
+  // Brief preview for the invite-link landing page — doesn't require
+  // being a member, so this is safe to call before anyone's actually
+  // joined. Returns null (rather than throwing) on an invalid/expired
+  // code so the page can show its own "link isn't valid" state.
+  getGroupInvitePreview: async (inviteCode) => {
+    try {
+      const res = await axiosInstance.get(`/groups/invite/${inviteCode}`);
+      return res.data;
+    } catch (error) {
+      return { error: error.response?.data?.message || "This invite link is no longer valid" };
+    }
+  },
+
+  // Joins (or, for someone already a member, just re-fetches) the group
+  // behind an invite code. Unlike _applyGroupUpdate, this adds the group
+  // to local state if it wasn't there yet — mirrors how createGroup
+  // seeds state for a brand-new group.
+  joinGroupByInviteCode: async (inviteCode) => {
+    try {
+      const res = await axiosInstance.post(`/groups/invite/${inviteCode}/join`);
+      set((state) => ({
+        groups: state.groups.some((group) => group._id === res.data._id)
+          ? state.groups.map((group) => (group._id === res.data._id ? res.data : group))
+          : [res.data, ...state.groups],
+      }));
+      return res.data;
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Couldn't join that group");
+      return null;
+    }
+  },
+
+  regenerateInviteCode: async (groupId) => {
+    try {
+      const res = await axiosInstance.post(`/groups/${groupId}/invite/regenerate`);
+      set((state) => ({
+        groups: state.groups.map((group) =>
+          group._id === groupId ? { ...group, inviteCode: res.data.inviteCode } : group,
+        ),
+      }));
+      return res.data.inviteCode;
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Couldn't reset the invite link");
+      return null;
+    }
+  },
+
   createGroup: async ({ name, memberIds }) => {
     try {
       const res = await axiosInstance.post("/groups", { name, memberIds });

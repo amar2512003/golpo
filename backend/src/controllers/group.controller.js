@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import Group, { MAX_GROUP_MEMBERS } from "../models/group.model.js";
 import GroupMessage from "../models/groupMessage.model.js";
 import { hasImageKitConfig, uploadChatMedia } from "../lib/imagekit.js";
@@ -72,6 +73,107 @@ export async function getUserGroups(req, res) {
     res.status(200).json(groups);
   } catch (error) {
     console.error("Error in getUserGroups:", error.message);
+    res.status(500).json({ message: "Internal server error" });
+  }
+}
+
+// Public-ish "brief" for a group invite link — enough for the invitee to
+// decide whether to join, without exposing anything only a member should
+// see (message history, full member list, etc.). Still behind
+// protectRoute like every other group route, so the person needs to be
+// signed in, but membership in *this* group is deliberately not required.
+export async function getGroupInvitePreview(req, res) {
+  try {
+    const { inviteCode } = req.params;
+
+    const group = await Group.findOne({ inviteCode }).populate("createdBy", "fullName");
+
+    if (!group) {
+      return res.status(404).json({ message: "This invite link is no longer valid" });
+    }
+
+    res.status(200).json({
+      _id: group._id,
+      name: group.name,
+      description: group.description,
+      groupPic: group.groupPic,
+      memberCount: group.members.length,
+      maxMembers: MAX_GROUP_MEMBERS,
+      createdByName: group.createdBy?.fullName || null,
+      isMember: isMember(group, req.user._id),
+      isFull: group.members.length >= MAX_GROUP_MEMBERS,
+    });
+  } catch (error) {
+    console.error("Error in getGroupInvitePreview:", error.message);
+    res.status(500).json({ message: "Internal server error" });
+  }
+}
+
+// Self-serve join via the invite link — no admin approval step. Safe to
+// call again for someone who's already a member (just hands back the
+// group as-is) so the invite page can reuse this for "open group" too.
+export async function joinGroupByInvite(req, res) {
+  try {
+    const { inviteCode } = req.params;
+    const userId = req.user._id;
+
+    const group = await Group.findOne({ inviteCode });
+
+    if (!group) {
+      return res.status(404).json({ message: "This invite link is no longer valid" });
+    }
+
+    if (!isMember(group, userId)) {
+      if (group.members.length >= MAX_GROUP_MEMBERS) {
+        return res.status(400).json({
+          message: `Groups are limited to ${MAX_GROUP_MEMBERS} members`,
+        });
+      }
+
+      group.members.push(userId);
+      await group.save();
+
+      // Same ordering requirement as addMembers: the new member's socket
+      // has to actually join the room before other members are told
+      // about them, or they won't see the roster change live.
+      await joinUserToGroupRooms(userId);
+    }
+
+    const populatedGroup = await group.populate("members admin createdBy", "-clerkId");
+
+    io.to(group._id.toString()).emit("groupUpdated", populatedGroup);
+
+    res.status(200).json(populatedGroup);
+  } catch (error) {
+    console.error("Error in joinGroupByInvite:", error.message);
+    res.status(500).json({ message: "Internal server error" });
+  }
+}
+
+// Invalidates the old link (anyone still holding it gets a 404) and
+// hands back a fresh code — admin-only, for when a link's been shared
+// more widely than intended.
+export async function regenerateInviteCode(req, res) {
+  try {
+    const { groupId } = req.params;
+    const requesterId = req.user._id;
+
+    const group = await Group.findById(groupId);
+
+    if (!group) {
+      return res.status(404).json({ message: "Group not found" });
+    }
+
+    if (!isAdmin(group, requesterId)) {
+      return res.status(403).json({ message: "Only the group admin can reset the invite link" });
+    }
+
+    group.inviteCode = crypto.randomBytes(6).toString("hex");
+    await group.save();
+
+    res.status(200).json({ inviteCode: group.inviteCode });
+  } catch (error) {
+    console.error("Error in regenerateInviteCode:", error.message);
     res.status(500).json({ message: "Internal server error" });
   }
 }
