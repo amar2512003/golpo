@@ -13,7 +13,21 @@ const groupSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    description: {
+      type: String,
+      default: "",
+      trim: true,
+      maxlength: 500,
+    },
     admin: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+    // Set once at creation and never changed — `admin` can be handed off
+    // to someone else later, but "who created this group" shouldn't move
+    // with it.
+    createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,

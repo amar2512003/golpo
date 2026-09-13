@@ -1,10 +1,14 @@
 import Group, { MAX_GROUP_MEMBERS } from "../models/group.model.js";
 import GroupMessage from "../models/groupMessage.model.js";
 import { hasImageKitConfig, uploadChatMedia } from "../lib/imagekit.js";
-import { io, joinUserToGroupRooms } from "../lib/socket.js";
+import { io, joinUserToGroupRooms, endCallForGroup, removeUserFromGroupCall } from "../lib/socket.js";
 
 function isMember(group, userId) {
   return group.members.some((memberId) => memberId.toString() === userId.toString());
+}
+
+function isAdmin(group, userId) {
+  return group.admin.toString() === userId.toString();
 }
 
 export async function createGroup(req, res) {
@@ -34,10 +38,11 @@ export async function createGroup(req, res) {
     const group = await Group.create({
       name: name.trim(),
       admin: adminId,
+      createdBy: adminId,
       members: uniqueMemberIds,
     });
 
-    const populatedGroup = await group.populate("members admin", "-clerkId");
+    const populatedGroup = await group.populate("members admin createdBy", "-clerkId");
 
     // Bring every currently-online member into the room immediately,
     // so they don't need to reconnect to start receiving group messages.
@@ -57,7 +62,7 @@ export async function getUserGroups(req, res) {
     const userId = req.user._id;
 
     const groups = await Group.find({ members: userId })
-      .populate("members admin", "-clerkId")
+      .populate("members admin createdBy", "-clerkId")
       .sort({ updatedAt: -1 });
 
     res.status(200).json(groups);
@@ -170,7 +175,7 @@ export async function addMembers(req, res) {
     group.members = updatedMembers;
     await group.save();
 
-    const populatedGroup = await group.populate("members admin", "-clerkId");
+    const populatedGroup = await group.populate("members admin createdBy", "-clerkId");
 
     updatedMembers.forEach((memberId) => joinUserToGroupRooms(memberId));
 
@@ -205,7 +210,9 @@ export async function removeMember(req, res) {
     group.members = group.members.filter((id) => id.toString() !== memberId);
     await group.save();
 
-    const populatedGroup = await group.populate("members admin", "-clerkId");
+    removeUserFromGroupCall(groupId, memberId);
+
+    const populatedGroup = await group.populate("members admin createdBy", "-clerkId");
 
     io.to(groupId).emit("groupUpdated", populatedGroup);
     io.to(groupId).emit("removedFromGroup", { groupId, memberId });
@@ -213,6 +220,136 @@ export async function removeMember(req, res) {
     res.status(200).json(populatedGroup);
   } catch (error) {
     console.error("Error in removeMember:", error.message);
+    res.status(500).json({ message: "Internal server error" });
+  }
+}
+
+// Renames the group, edits its description, and/or swaps its picture.
+// Any subset of these can be sent at once — only the fields actually
+// present in the request are touched.
+export async function updateGroup(req, res) {
+  try {
+    const { groupId } = req.params;
+    const { name, description } = req.body;
+    const requesterId = req.user._id;
+
+    const group = await Group.findById(groupId);
+
+    if (!group) {
+      return res.status(404).json({ message: "Group not found" });
+    }
+
+    if (!isAdmin(group, requesterId)) {
+      return res.status(403).json({ message: "Only the group admin can edit this group" });
+    }
+
+    if (typeof name === "string") {
+      if (!name.trim()) {
+        return res.status(400).json({ message: "Group name is required" });
+      }
+      group.name = name.trim();
+    }
+
+    if (typeof description === "string") {
+      const trimmedDescription = description.trim();
+      if (trimmedDescription.length > 500) {
+        return res.status(400).json({ message: "Description must be 500 characters or fewer" });
+      }
+      group.description = trimmedDescription;
+    }
+
+    if (req.file) {
+      if (!hasImageKitConfig()) {
+        return res.status(500).json({ message: "Image upload is not configured" });
+      }
+      group.groupPic = await uploadChatMedia(req.file);
+    }
+
+    await group.save();
+
+    const populatedGroup = await group.populate("members admin createdBy", "-clerkId");
+
+    io.to(groupId).emit("groupUpdated", populatedGroup);
+
+    res.status(200).json(populatedGroup);
+  } catch (error) {
+    console.error("Error in updateGroup:", error.message);
+    res.status(500).json({ message: "Internal server error" });
+  }
+}
+
+// Hands admin rights to another current member. Only the current admin
+// can do this — there's no group-vote mechanic, just a direct handoff.
+export async function makeAdmin(req, res) {
+  try {
+    const { groupId } = req.params;
+    const { memberId } = req.body;
+    const requesterId = req.user._id;
+
+    const group = await Group.findById(groupId);
+
+    if (!group) {
+      return res.status(404).json({ message: "Group not found" });
+    }
+
+    if (!isAdmin(group, requesterId)) {
+      return res.status(403).json({ message: "Only the group admin can transfer admin" });
+    }
+
+    if (!memberId) {
+      return res.status(400).json({ message: "memberId is required" });
+    }
+
+    if (memberId === requesterId.toString()) {
+      return res.status(400).json({ message: "You're already the admin" });
+    }
+
+    if (!isMember(group, memberId)) {
+      return res.status(400).json({ message: "That user isn't a member of this group" });
+    }
+
+    group.admin = memberId;
+    await group.save();
+
+    const populatedGroup = await group.populate("members admin createdBy", "-clerkId");
+
+    io.to(groupId).emit("groupUpdated", populatedGroup);
+
+    res.status(200).json(populatedGroup);
+  } catch (error) {
+    console.error("Error in makeAdmin:", error.message);
+    res.status(500).json({ message: "Internal server error" });
+  }
+}
+
+// Permanently deletes the group, its message history, and ends any call
+// currently in progress for it (there's no group left for anyone to be
+// on a call "for" once this completes).
+export async function deleteGroup(req, res) {
+  try {
+    const { groupId } = req.params;
+    const requesterId = req.user._id;
+
+    const group = await Group.findById(groupId);
+
+    if (!group) {
+      return res.status(404).json({ message: "Group not found" });
+    }
+
+    if (!isAdmin(group, requesterId)) {
+      return res.status(403).json({ message: "Only the group admin can delete this group" });
+    }
+
+    endCallForGroup(groupId);
+
+    await GroupMessage.deleteMany({ groupId });
+    await group.deleteOne();
+
+    io.to(groupId).emit("groupDeleted", { groupId });
+
+    res.status(200).json({ message: "Group deleted" });
+  } catch (error) {
+    console.error("Error in deleteGroup:", error.message);
     res.status(500).json({ message: "Internal server error" });
   }
 }
@@ -235,7 +372,11 @@ export async function leaveGroup(req, res) {
       group.admin = group.members[0];
     }
 
+    removeUserFromGroupCall(groupId, userId);
+
     if (group.members.length === 0) {
+      endCallForGroup(groupId);
+      await GroupMessage.deleteMany({ groupId });
       await group.deleteOne();
       io.to(groupId).emit("groupDeleted", { groupId });
       return res.status(200).json({ message: "Group deleted (last member left)" });
@@ -243,7 +384,7 @@ export async function leaveGroup(req, res) {
 
     await group.save();
 
-    const populatedGroup = await group.populate("members admin", "-clerkId");
+    const populatedGroup = await group.populate("members admin createdBy", "-clerkId");
 
     io.to(groupId).emit("groupUpdated", populatedGroup);
     io.to(groupId).emit("memberLeft", { groupId, memberId: userId });

@@ -40,6 +40,36 @@ function getCallParticipants(groupId) {
   return activeCallParticipants.get(groupId);
 }
 
+// Drops one user out of a group's call room without ending it for
+// anyone else — used when group membership changes (kicked, left,
+// admin removed them) for a user who happens to still be on the call.
+// Looks up their live socket itself since callers here (REST
+// controllers) don't have one handy the way the socket.io event
+// handlers above do.
+function removeUserFromGroupCall(groupId, userId) {
+  const targetSocketId = getReceiverSocketId(userId);
+  const targetSocket = targetSocketId && io.sockets.sockets.get(targetSocketId);
+  leaveCallRoom(groupId, userId, targetSocket);
+}
+
+// Ends an in-progress group call for everyone on it — used both by the
+// explicit call:group-end socket event and by deleteGroup (a group that
+// no longer exists can't have anyone left on a call for it).
+function endCallForGroup(groupId) {
+  const participants = activeCallParticipants.get(groupId);
+  if (!participants) return;
+
+  const roomId = getCallRoomId(groupId);
+
+  io.to(roomId).emit("call:group-ended", { groupId });
+
+  participants.forEach(({ socketId }) => {
+    io.sockets.sockets.get(socketId)?.leave(roomId);
+  });
+
+  activeCallParticipants.delete(groupId);
+}
+
 // Removes a user from a group call's participant map and room, and
 // lets the rest of the mesh know so they can tear down that one peer
 // connection. No-ops quietly if the user wasn't actually in the call.
@@ -277,20 +307,7 @@ io.on("connection", (socket) => {
 
   // Ends the call for every current participant (e.g. the last person
   // leaving, or a forced end), rather than tearing down one peer.
-  socket.on("call:group-end", ({ groupId }) => {
-    const participants = activeCallParticipants.get(groupId);
-    if (!participants) return;
-
-    const roomId = getCallRoomId(groupId);
-
-    io.to(roomId).emit("call:group-ended", { groupId });
-
-    participants.forEach(({ socketId }) => {
-      io.sockets.sockets.get(socketId)?.leave(roomId);
-    });
-
-    activeCallParticipants.delete(groupId);
-  });
+  socket.on("call:group-end", ({ groupId }) => endCallForGroup(groupId));
 
   // ---------------- Disconnect ----------------
 
@@ -324,4 +341,6 @@ export {
   getReceiverSocketId,
   joinUserToGroupRooms,
   getCallParticipants,
+  endCallForGroup,
+  removeUserFromGroupCall,
 };

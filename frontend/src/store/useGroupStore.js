@@ -31,6 +31,7 @@ export const useGroupStore = create((set, get) => ({
   isGroupsLoading: false,
   isGroupMessagesLoading: false,
   isSendingGroupMedia: false,
+  isUpdatingGroup: false,
 
   getGroups: async () => {
     set({ isGroupsLoading: true });
@@ -70,6 +71,98 @@ export const useGroupStore = create((set, get) => ({
     } catch (error) {
       toast.error(error.response?.data?.message || "Failed to create group");
       return null;
+    }
+  },
+
+  // Applies a server-returned group doc to local state — every group
+  // management action below (rename, admin transfer, membership changes)
+  // ends the same way, so they all funnel through this.
+  _applyGroupUpdate: (updatedGroup) => {
+    set((state) => ({
+      groups: state.groups.map((group) =>
+        group._id === updatedGroup._id ? updatedGroup : group,
+      ),
+    }));
+  },
+
+  // name/description/groupPicFile are all optional — only the ones
+  // provided are changed. Admin-only on the backend.
+  updateGroupDetails: async (groupId, { name, description, groupPicFile } = {}) => {
+    set({ isUpdatingGroup: true });
+    try {
+      const formData = new FormData();
+      if (typeof name === "string") formData.append("name", name);
+      if (typeof description === "string") formData.append("description", description);
+      if (groupPicFile) formData.append("groupPic", groupPicFile);
+
+      const res = await axiosInstance.patch(`/groups/${groupId}`, formData);
+      get()._applyGroupUpdate(res.data);
+      return res.data;
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Failed to update group");
+      return null;
+    } finally {
+      set({ isUpdatingGroup: false });
+    }
+  },
+
+  makeAdmin: async (groupId, memberId) => {
+    try {
+      const res = await axiosInstance.patch(`/groups/${groupId}/admin`, { memberId });
+      get()._applyGroupUpdate(res.data);
+      return res.data;
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Failed to change admin");
+      return null;
+    }
+  },
+
+  addGroupMembers: async (groupId, memberIds) => {
+    try {
+      const res = await axiosInstance.post(`/groups/${groupId}/members`, { memberIds });
+      get()._applyGroupUpdate(res.data);
+      return res.data;
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Failed to add members");
+      return null;
+    }
+  },
+
+  removeGroupMember: async (groupId, memberId) => {
+    try {
+      const res = await axiosInstance.delete(`/groups/${groupId}/members/${memberId}`);
+      get()._applyGroupUpdate(res.data);
+      return true;
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Failed to remove member");
+      return false;
+    }
+  },
+
+  // Leaving/deleting the group also means leaving any call currently
+  // running for it — there's nothing left for this user to be on a call
+  // "for" once they're not a member (or it doesn't exist) any more.
+  leaveGroupById: async (groupId) => {
+    try {
+      await axiosInstance.post(`/groups/${groupId}/leave`);
+      set((state) => removeGroupLocally(state, groupId));
+      forceLeaveGroupCall(groupId);
+      return true;
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Failed to leave group");
+      return false;
+    }
+  },
+
+  deleteGroupById: async (groupId) => {
+    try {
+      await axiosInstance.delete(`/groups/${groupId}`);
+      set((state) => removeGroupLocally(state, groupId));
+      forceLeaveGroupCall(groupId);
+      return true;
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Failed to delete group");
+      return false;
     }
   },
 

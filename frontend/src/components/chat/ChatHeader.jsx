@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { AppLogo } from "../AppLogo";
 import { AvatarWithOnlineIndicator } from "./AvatarWithOnlineIndicator";
+import { GroupInfoModal } from "./GroupInfoModal";
 
 import { ThemeToggle } from "../ThemeToggle";
 
@@ -60,11 +61,13 @@ export function ChatHeader() {
   const isGroup = activeConversationType === "group";
 
   const closeActiveThread = () => {
+    setIsGroupInfoOpen(false);
     if (isGroup) clearActiveGroup();
     else setActiveConversationId(null);
   };
 
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isGroupInfoOpen, setIsGroupInfoOpen] = useState(false);
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -147,32 +150,47 @@ export function ChatHeader() {
 
       {activeConversation ? (
         <>
-          <AvatarWithOnlineIndicator isOnline={activeConversation.peer.isOnline ?? true}>
-            <Avatar className="size-9 shrink-0">
-              <Avatar.Image
-                alt={activeConversation.peer.name}
-                src={activeConversation.peer.avatarUrl}
-              />
-              <Avatar.Fallback className="text-sm font-medium">
-                {activeConversation.peer.initials}
-              </Avatar.Fallback>
-            </Avatar>
-          </AvatarWithOnlineIndicator>
+          <button
+            type="button"
+            disabled={!isGroup}
+            onClick={() => isGroup && setIsGroupInfoOpen(true)}
+            className="flex min-w-0 flex-1 items-center gap-2 text-left sm:flex-initial"
+            aria-label={isGroup ? "View group info" : undefined}
+          >
+            <AvatarWithOnlineIndicator isOnline={activeConversation.peer.isOnline ?? true}>
+              <Avatar className="size-9 shrink-0">
+                <Avatar.Image
+                  alt={activeConversation.peer.name}
+                  src={activeConversation.peer.avatarUrl}
+                />
+                <Avatar.Fallback className="text-sm font-medium">
+                  {activeConversation.peer.initials}
+                </Avatar.Fallback>
+              </Avatar>
+            </AvatarWithOnlineIndicator>
 
-          <div className="flex-1 text-center sm:text-left">
-            <p className="truncate text-[15px] font-semibold leading-tight">
-              {activeConversation.peer.name}
-            </p>
-            <p className="truncate text-xs text-muted">
-              {isGroup ? (
-                activeConversation.peer.subtitle
-              ) : activeConversation.peer.isOnline ? (
-                <span className="font-medium text-success">Online</span>
-              ) : (
-                "Offline"
-              )}
-            </p>
-          </div>
+            <div className="min-w-0 flex-1 text-center sm:text-left">
+              <p className="truncate text-[15px] font-semibold leading-tight">
+                {activeConversation.peer.name}
+              </p>
+              <p className="truncate text-xs text-muted">
+                {isGroup ? (
+                  activeConversation.peer.subtitle
+                ) : activeConversation.peer.isOnline ? (
+                  <span className="font-medium text-success">Online</span>
+                ) : (
+                  "Offline"
+                )}
+              </p>
+            </div>
+          </button>
+
+          {isGroup && isGroupInfoOpen ? (
+            <GroupInfoModal
+              groupId={activeConversation.id}
+              onClose={() => setIsGroupInfoOpen(false)}
+            />
+          ) : null}
         </>
       ) : (
         <div className="flex flex-1 items-center gap-2.5 sm:text-left">
