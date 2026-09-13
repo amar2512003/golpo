@@ -46,7 +46,11 @@ export async function createGroup(req, res) {
 
     // Bring every currently-online member into the room immediately,
     // so they don't need to reconnect to start receiving group messages.
-    uniqueMemberIds.forEach((memberId) => joinUserToGroupRooms(memberId));
+    // This has to be awaited: joinUserToGroupRooms does an async DB
+    // lookup, and if the "groupCreated" emit below fired before it
+    // resolved, members whose sockets hadn't joined the room yet would
+    // simply miss the event (Socket.IO doesn't queue/replay it).
+    await Promise.all(uniqueMemberIds.map((memberId) => joinUserToGroupRooms(memberId)));
 
     io.to(group._id.toString()).emit("groupCreated", populatedGroup);
 
@@ -177,7 +181,10 @@ export async function addMembers(req, res) {
 
     const populatedGroup = await group.populate("members admin createdBy", "-clerkId");
 
-    updatedMembers.forEach((memberId) => joinUserToGroupRooms(memberId));
+    // Same ordering issue as createGroup: the newly-added member's
+    // socket must actually join the room before we emit, or they'll
+    // never see the group until they reconnect/refresh.
+    await Promise.all(updatedMembers.map((memberId) => joinUserToGroupRooms(memberId)));
 
     io.to(groupId).emit("groupUpdated", populatedGroup);
 

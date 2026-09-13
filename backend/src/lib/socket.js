@@ -20,7 +20,26 @@ const io = new Server(server, {
   },
 });
 
+// userId -> Set<socketId>. A user can have more than one live socket at
+// once (multiple tabs, phone + laptop, a refresh that hasn't torn down
+// the old socket yet), so presence has to be reference-counted per user
+// rather than overwritten by whichever socket connected last.
 const userSocketMap = {};
+
+function addUserSocket(userId, socketId) {
+  if (!userSocketMap[userId]) userSocketMap[userId] = new Set();
+  userSocketMap[userId].add(socketId);
+}
+
+// Only clears the user's presence once their last socket is gone, so
+// closing/refreshing one tab doesn't mark them offline while another
+// tab or device is still connected.
+function removeUserSocket(userId, socketId) {
+  const sockets = userSocketMap[userId];
+  if (!sockets) return;
+  sockets.delete(socketId);
+  if (sockets.size === 0) delete userSocketMap[userId];
+}
 
 // groupId -> Map<userId, { socketId, callType }>
 // Tracks who is actively "in call" for a group, separate from group
@@ -28,8 +47,14 @@ const userSocketMap = {};
 // be on the call at a given moment.
 const activeCallParticipants = new Map();
 
+// Returns one live socket id for this user, for the 1:1 signaling paths
+// that only need to reach "a" device (e.g. ringing). Arbitrary which one
+// if there are several — those paths were never multi-device aware and
+// that's unchanged here.
 function getReceiverSocketId(userId) {
-  return userSocketMap[userId];
+  const sockets = userSocketMap[userId];
+  if (!sockets || sockets.size === 0) return undefined;
+  return sockets.values().next().value;
 }
 
 function getCallRoomId(groupId) {
@@ -122,7 +147,7 @@ io.on("connection", (socket) => {
   const userId = socket.handshake.query.userId;
 
   if (userId) {
-    userSocketMap[userId] = socket.id;
+    addUserSocket(userId, socket.id);
     joinUserToGroupRooms(userId, socket.id);
   }
 
@@ -315,13 +340,13 @@ io.on("connection", (socket) => {
     console.log("Socket disconnected:", socket.id);
 
     if (userId) {
-      delete userSocketMap[userId];
+      removeUserSocket(userId, socket.id);
 
       // If this socket dropped mid-call, tell the rest of the mesh so
       // they tear down that one peer connection instead of hanging on
       // a dead connection until ICE eventually times out.
       activeCallParticipants.forEach((participants, groupId) => {
-        if (participants.has(userId.toString())) {
+        if (participants.get(userId.toString())?.socketId === socket.id) {
           leaveCallRoom(groupId, userId, socket);
         }
       });
