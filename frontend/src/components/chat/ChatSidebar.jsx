@@ -28,7 +28,7 @@ function mapUserForList(user, onlineUsers) {
   };
 }
 
-function mapGroupForList(group) {
+function mapGroupForList(group, liveCall) {
   const memberCount = group.members?.length || 0;
   return {
     id: group._id,
@@ -37,6 +37,7 @@ function mapGroupForList(group) {
     initials: getInitials(group.name),
     subtitle: `${memberCount} member${memberCount === 1 ? "" : "s"}`,
     showOnlineIndicator: false,
+    liveCall,
   };
 }
 
@@ -54,6 +55,7 @@ function ChatSidebar() {
 
   const groups = useGroupStore((state) => state.groups);
   const setActiveGroupId = useGroupStore((state) => state.setActiveGroupId);
+  const activeGroupCalls = useGroupStore((state) => state.activeGroupCalls);
 
   const onlineUsers = useAuthStore((state) => state.onlineUsers);
 
@@ -65,7 +67,7 @@ function ChatSidebar() {
 
   const conversationUsers = conversations.map((user) => mapUserForList(user, onlineUsers));
   const allUsers = users.map((user) => mapUserForList(user, onlineUsers));
-  const groupItems = groups.map((group) => mapGroupForList(group));
+  const groupItems = groups.map((group) => mapGroupForList(group, activeGroupCalls[group._id]));
 
   const filteredConversations = normalizedSearchQuery
     ? conversationUsers.filter((conversation) =>

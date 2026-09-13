@@ -1,8 +1,10 @@
 import { Avatar } from "@heroui/react";
+import { PhoneIcon, VideoIcon } from "lucide-react";
 import { AvatarWithOnlineIndicator } from "./AvatarWithOnlineIndicator";
 
 export function ConversationRow({ user, selected, onSelect }) {
   const showOnlineIndicator = user.showOnlineIndicator ?? true;
+  const liveCall = user.liveCall;
 
   const avatar = (
     <Avatar className="size-12 shrink-0">
@@ -27,7 +29,22 @@ export function ConversationRow({ user, selected, onSelect }) {
 
       <div className="min-w-0 flex-1">
         <p className="truncate text-[15px] font-semibold">{user.name}</p>
-        {user.subtitle ? <p className="truncate text-xs text-muted">{user.subtitle}</p> : null}
+        {liveCall ? (
+          <p className="flex items-center gap-1 truncate text-xs font-medium text-green-600">
+            <span className="relative flex size-1.5 shrink-0">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-500 opacity-75" />
+              <span className="relative inline-flex size-1.5 rounded-full bg-green-500" />
+            </span>
+            {liveCall.callType === "audio" ? (
+              <PhoneIcon className="size-3 shrink-0" aria-hidden />
+            ) : (
+              <VideoIcon className="size-3 shrink-0" aria-hidden />
+            )}
+            Call live
+          </p>
+        ) : user.subtitle ? (
+          <p className="truncate text-xs text-muted">{user.subtitle}</p>
+        ) : null}
       </div>
     </button>
   );

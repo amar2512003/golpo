@@ -17,10 +17,14 @@ function forceLeaveGroupCall(groupId) {
 }
 
 function removeGroupLocally(state, groupId) {
+  const activeGroupCalls = { ...state.activeGroupCalls };
+  delete activeGroupCalls[groupId];
+
   return {
     groups: state.groups.filter((group) => group._id !== groupId),
     activeGroupId: state.activeGroupId === groupId ? null : state.activeGroupId,
     groupMessages: state.activeGroupId === groupId ? [] : state.groupMessages,
+    activeGroupCalls,
   };
 }
 
@@ -32,6 +36,12 @@ export const useGroupStore = create((set, get) => ({
   isGroupMessagesLoading: false,
   isSendingGroupMedia: false,
   isUpdatingGroup: false,
+
+  // groupId -> { callType, startedByUserId }. Populated from
+  // call:group-call-started / call:group-call-ended, which the server
+  // broadcasts to every group member (not just people on the call), so
+  // members who haven't joined yet know a call is live and can jump in.
+  activeGroupCalls: {},
 
   getGroups: async () => {
     set({ isGroupsLoading: true });
@@ -240,6 +250,8 @@ export const useGroupStore = create((set, get) => ({
     socket.off("groupDeleted");
     socket.off("removedFromGroup");
     socket.off("memberLeft");
+    socket.off("call:group-call-started");
+    socket.off("call:group-call-ended");
 
     socket.on("groupCreated", (group) => {
       set((state) =>
@@ -273,6 +285,32 @@ export const useGroupStore = create((set, get) => ({
       set((state) => removeGroupLocally(state, groupId));
       forceLeaveGroupCall(groupId);
     });
+
+    // Someone started (or we just discovered) a group call. The server
+    // already excludes the person who started it from this event, so no
+    // need to special-case "was it me" here.
+    socket.on("call:group-call-started", ({ groupId, callType, startedBy }) => {
+      set((state) => ({
+        activeGroupCalls: { ...state.activeGroupCalls, [groupId]: { callType, startedByUserId: startedBy } },
+      }));
+
+      // Only nudge with a toast if this isn't the thread already open —
+      // the banner inside the chat covers that case.
+      if (String(get().activeGroupId) !== String(groupId)) {
+        const group = get().groups.find((g) => g._id === groupId);
+        const label = callType === "audio" ? "Audio call" : "Video call";
+        toast(`${label} started in ${group?.name || "a group"}`);
+      }
+    });
+
+    socket.on("call:group-call-ended", ({ groupId }) => {
+      set((state) => {
+        if (!(groupId in state.activeGroupCalls)) return state;
+        const activeGroupCalls = { ...state.activeGroupCalls };
+        delete activeGroupCalls[groupId];
+        return { activeGroupCalls };
+      });
+    });
   },
 
   unsubscribeFromGroupEvents: () => {
@@ -282,6 +320,8 @@ export const useGroupStore = create((set, get) => ({
     socket?.off("groupDeleted");
     socket?.off("removedFromGroup");
     socket?.off("memberLeft");
+    socket?.off("call:group-call-started");
+    socket?.off("call:group-call-ended");
   },
 
   setActiveGroupId: (groupId) => {

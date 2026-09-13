@@ -9,6 +9,7 @@ import { MessageList } from "../components/chat/MessageList";
 import { ChatComposer } from "../components/chat/ChatComposer";
 import { VideoCallModal } from "../components/chat/VideoCallModal";
 import { GroupCallModal } from "../components/chat/GroupCallModal";
+import { GroupCallBanner } from "../components/chat/GroupCallBanner";
 
 function ChatPage() {
   const { frameStyle } = useWallpaper();
@@ -77,6 +78,7 @@ function ChatPage() {
             }`}
           >
             <ChatHeader />
+            <GroupCallBanner />
             <MessageList />
 
             {activeConversation ? <ChatComposer /> : null}

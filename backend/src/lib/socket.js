@@ -65,6 +65,54 @@ function getCallParticipants(groupId) {
   return activeCallParticipants.get(groupId);
 }
 
+// Snapshot used both when a call first starts and when we need to catch a
+// freshly (re)connected socket up on a call that was already in progress —
+// just enough for the "a call is live" banner, not the full roster.
+function getActiveGroupCallInfo(groupId) {
+  const participants = activeCallParticipants.get(groupId);
+  if (!participants || participants.size === 0) return null;
+
+  const [, firstParticipant] = participants.entries().next().value;
+  return { groupId, callType: firstParticipant.callType };
+}
+
+// Lets every member of the group know a call is live — not just those
+// already on it — so people who haven't joined yet see a "call is live"
+// banner instead of only finding out by opening the chat and guessing.
+function announceGroupCallStarted(groupId, callType, startedBy, { toSocket } = {}) {
+  const payload = { groupId, callType, startedBy: startedBy || null };
+  if (toSocket) {
+    toSocket.emit("call:group-call-started", payload);
+  } else {
+    io.to(groupId).emit("call:group-call-started", payload);
+  }
+}
+
+// Companion to announceGroupCallStarted — lets the whole group (not just
+// the call room) know the call is over, so the banner disappears for
+// anyone who saw it but never joined.
+function announceGroupCallEnded(groupId) {
+  io.to(groupId).emit("call:group-call-ended", { groupId });
+}
+
+// Catches a socket up on any calls already in progress for groups it
+// belongs to — covers both a fresh login/connect and a reconnect, so the
+// "call is live" banner isn't only shown to people who were already
+// online when the call started.
+async function notifyActiveGroupCalls(userId, socket) {
+  try {
+    const groups = await Group.find({ members: userId }).select("_id");
+    groups.forEach((group) => {
+      const info = getActiveGroupCallInfo(group._id.toString());
+      if (info) {
+        announceGroupCallStarted(info.groupId, info.callType, null, { toSocket: socket });
+      }
+    });
+  } catch (error) {
+    console.error("Error notifying active group calls:", error.message);
+  }
+}
+
 // Drops one user out of a group's call room without ending it for
 // anyone else — used when group membership changes (kicked, left,
 // admin removed them) for a user who happens to still be on the call.
@@ -93,6 +141,7 @@ function endCallForGroup(groupId) {
   });
 
   activeCallParticipants.delete(groupId);
+  announceGroupCallEnded(groupId);
 }
 
 // Removes a user from a group call's participant map and room, and
@@ -111,6 +160,7 @@ function leaveCallRoom(groupId, uid, sock) {
 
   if (participants.size === 0) {
     activeCallParticipants.delete(groupId);
+    announceGroupCallEnded(groupId);
   }
 
   io.to(getCallRoomId(groupId)).emit("call:group-user-left", {
@@ -148,7 +198,9 @@ io.on("connection", (socket) => {
 
   if (userId) {
     addUserSocket(userId, socket.id);
-    joinUserToGroupRooms(userId, socket.id);
+    joinUserToGroupRooms(userId, socket.id).then(() => {
+      notifyActiveGroupCalls(userId, socket);
+    });
   }
 
   io.emit(
@@ -292,6 +344,8 @@ io.on("connection", (socket) => {
           .filter(([id]) => id !== key)
           .map(([id, info]) => ({ userId: id, callType: info.callType }));
 
+        const isNewCall = participants.size === 0;
+
         participants.set(key, { socketId: socket.id, callType });
         socket.join(getCallRoomId(groupId));
 
@@ -304,6 +358,13 @@ io.on("connection", (socket) => {
           userId: key,
           callType,
         });
+
+        // First person in — tell the rest of the group (not just the
+        // call room) so members who haven't joined yet see a "call is
+        // live" banner instead of only finding out by opening the chat.
+        if (isNewCall) {
+          announceGroupCallStarted(groupId, callType, key);
+        }
       } catch (error) {
         console.error("Error in call:group-join:", error.message);
         callback?.({ error: "Internal server error" });
