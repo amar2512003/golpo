@@ -81,9 +81,14 @@ export async function getConversationsForSidebar(req, res) {
       { $sort: { lastMessageAt: -1 } },
       // 4. Look up each partner's user profile (comes back as an array).
       { $lookup: { from: "users", localField: "_id", foreignField: "_id", as: "user" } },
-      // 5. Pull that profile out of the array and make it the document.
+      // 5. Drop any conversation whose partner account no longer exists —
+      // $replaceRoot below needs a real document, and without this a
+      // single deleted account would throw and blank out every
+      // conversation for this user, not just that one.
+      { $match: { user: { $ne: [] } } },
+      // 6. Pull that profile out of the array and make it the document.
       { $replaceRoot: { newRoot: { $first: "$user" } } },
-      // 6. Hide the private clerkId field from the result.
+      // 7. Hide the private clerkId field from the result.
       { $project: { clerkId: 0 } },
     ]);
 

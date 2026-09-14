@@ -95,7 +95,7 @@ export const useChatStore = create(
           const res = await axiosInstance.get("/messages/conversations");
           set({ conversations: res.data });
         } catch (error) {
-          console.log("Error in getConversations", error.message);
+          toast.error(error.response?.data?.message || "Couldn't load your conversations");
         } finally {
           set({ isConversationsLoading: false });
         }
