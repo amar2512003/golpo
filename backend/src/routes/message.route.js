@@ -3,6 +3,7 @@ import {
   getConversationsForSidebar,
   getMessages,
   getUserById,
+  markMessagesSeen,
   searchUserByEmail,
   sendMessage,
 } from "../controllers/message.controller.js";
@@ -19,6 +20,7 @@ router.get("/users/search", searchUserByEmail);
 router.get("/users/:id", getUserById);
 router.get("/conversations", getConversationsForSidebar);
 router.get("/:id", getMessages);
+router.put("/seen/:id", markMessagesSeen);
 router.post("/send/:id", upload.single("media"), sendMessage);
 
 export default router;

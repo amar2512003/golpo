@@ -188,7 +188,7 @@ export function GroupInfoModal({ groupId, onClose }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="flex max-h-[85vh] w-full max-w-sm flex-col overflow-hidden rounded-2xl border border-border bg-background text-foreground">
+      <div className="flex max-h-[85dvh] w-full max-w-sm flex-col overflow-hidden rounded-2xl border border-border bg-background text-foreground">
         <div className="flex shrink-0 items-center justify-between border-b border-border px-4 py-3">
           <p className="text-[15px] font-semibold">
             {view === "addMembers" ? "Add members" : "Group info"}

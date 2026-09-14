@@ -58,7 +58,7 @@ function GroupInvitePage() {
     : "";
 
   return (
-    <div className="flex min-h-dvh items-center justify-center bg-surface p-4">
+    <div className="flex h-dvh items-center justify-center overflow-y-auto bg-surface p-4">
       <div className="w-full max-w-sm rounded-2xl border border-border bg-background p-6 text-center text-foreground">
         <AppLogo size={40} className="mx-auto mb-4 size-10 rounded-[11px]" alt="" />
 

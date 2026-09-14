@@ -1,3 +1,4 @@
+import { CheckCheck } from "lucide-react";
 import { withTransform } from "../../lib/imagekit";
 import { MessageVideo } from "./MessageVideo";
 
@@ -8,6 +9,9 @@ export function MessageBubble({ message }) {
   const isOwnMessage = message.role === "me";
   const hasImage = Boolean(message.imageUrl);
   const hasVideo = Boolean(message.videoUrl);
+  // `seen` only exists on DM messages (group messages don't track it),
+  // so ticks are scoped to 1:1 chats for free.
+  const showReceipt = isOwnMessage && typeof message.seen === "boolean";
 
   return (
     <div className={`flex w-full ${isOwnMessage ? "justify-end" : "justify-start"}`}>
@@ -33,11 +37,19 @@ export function MessageBubble({ message }) {
           <p className="whitespace-pre-wrap wrap-break-word">{message.text}</p>
         ) : null}
         <p
-          className={`mt-1 text-[11px] tabular-nums ${
-            isOwnMessage ? "text-accent-foreground/75" : "text-muted"
+          className={`mt-1 flex items-center gap-1 text-[11px] tabular-nums ${
+            isOwnMessage ? "justify-end text-accent-foreground/75" : "text-muted"
           }`}
         >
           {message.time}
+          {showReceipt ? (
+            <CheckCheck
+              size={14}
+              strokeWidth={2.25}
+              className={message.seen ? "text-sky-400" : "text-accent-foreground/75"}
+              aria-label={message.seen ? "Seen" : "Sent"}
+            />
+          ) : null}
         </p>
       </div>
     </div>

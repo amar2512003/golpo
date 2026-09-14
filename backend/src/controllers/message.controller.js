@@ -113,6 +113,35 @@ export async function getMessages(req, res) {
   }
 }
 
+// Marks every message *from* :id *to* me as seen — called when I open
+// that conversation (clears any backlog) and again whenever a new
+// message arrives while it's already open. Tells the sender's socket
+// so their ticks can flip from grey to blue without them reloading.
+export async function markMessagesSeen(req, res) {
+  try {
+    const { id: otherUserId } = req.params;
+    const myId = req.user._id;
+
+    const result = await Message.updateMany(
+      { senderId: otherUserId, receiverId: myId, seen: false },
+      { $set: { seen: true, seenAt: new Date() } },
+    );
+
+    if (result.modifiedCount > 0) {
+      const senderSocketId = getReceiverSocketId(otherUserId);
+      if (senderSocketId) {
+        // seenBy = me, the person whose messages (sent to me) just got read.
+        io.to(senderSocketId).emit("messagesSeen", { seenBy: myId });
+      }
+    }
+
+    res.status(200).json({ modifiedCount: result.modifiedCount });
+  } catch (error) {
+    console.error("Error in markMessagesSeen:", error.message);
+    res.status(500).json({ message: "Internal server error" });
+  }
+}
+
 export async function sendMessage(req, res) {
   try {
     const { text } = req.body;

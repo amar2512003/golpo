@@ -80,7 +80,7 @@ function ChatSidebar() {
 
   return (
     <aside
-      className={`w-full shrink-0 flex-col overflow-hidden border-r border-border lg:w-72 ${
+      className={`min-h-0 w-full shrink-0 flex-col overflow-hidden border-r border-border lg:w-72 ${
         !isLargeScreen && activeConversationId ? "hidden lg:flex" : "flex"
       }`}
     >
@@ -104,7 +104,7 @@ function ChatSidebar() {
         selectedKey={sidebarTab}
         onSelectionChange={(key) => setSidebarTab(String(key))}
         variant="secondary"
-        className="flex flex-1 flex-col overflow-y-auto"
+        className="flex min-h-0 flex-1 flex-col overflow-y-auto"
       >
         <div className="shrink-0 border-b border-border px-3 pb-2 pt-2">
           <SearchField

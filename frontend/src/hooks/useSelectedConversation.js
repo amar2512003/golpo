@@ -25,8 +25,10 @@ function mapUserToConversation({ user, messages, authUser, onlineUsers }) {
     role: String(message.senderId) === String(authUser?._id) ? "me" : "them",
     text: message.text || "",
     time: formatMessageTime(message.createdAt),
+    createdAt: message.createdAt,
     imageUrl: message.image,
     videoUrl: message.video,
+    seen: message.seen,
   }));
 
   return {
@@ -58,6 +60,7 @@ function mapGroupToConversation({ group, messages, authUser }) {
       role: isMe ? "me" : "them",
       text: message.text || "",
       time: formatMessageTime(message.createdAt),
+      createdAt: message.createdAt,
       imageUrl: message.image,
       videoUrl: message.video,
       senderName: isMe ? null : message.senderId?.fullName,

@@ -1,3 +1,51 @@
 @import "tailwindcss";
 @import "@heroui/styles";
 @import "./styles/heroui-theme-presets.css";
+
+/*
+ * Mobile browser layout fixes
+ * ----------------------------
+ * Mobile Safari/Chrome apply "elastic" rubber-band overscroll to the
+ * document by default. Even when every panel inside the app is sized to
+ * fit the viewport (h-dvh + overflow-hidden), the *document itself* can
+ * still be dragged a little past its own edges — which reads as random,
+ * unwanted scroll ("infinite scroll") on pages that shouldn't scroll at
+ * all. It goes away when the keyboard is open because the OS temporarily
+ * disables that bounce while an input is focused, which is why the bug
+ * looked keyboard-related rather than layout-related.
+ *
+ * Fix: lock the document itself to the viewport and turn off its
+ * overscroll bounce, then let each panel that's actually meant to
+ * scroll (message list, sidebar, modals) own its own scroll region —
+ * those already use overflow-y-auto + overscroll-contain.
+ */
+html {
+  height: 100%;
+  overscroll-behavior-y: none;
+}
+
+body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  overscroll-behavior-y: none;
+  /* Keeps the app shell clear of notches and the home-indicator area
+     on phones that report safe-area insets (falls back to 0 elsewhere). */
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
+#root {
+  height: 100%;
+}
+
+/* iOS Safari zooms the page in when a focused input's font is under
+   16px — jarring on a chat app where the composer is used constantly.
+   Force 16px on inputs regardless of the design system's usual size. */
+input,
+textarea,
+select {
+  font-size: 16px;
+}

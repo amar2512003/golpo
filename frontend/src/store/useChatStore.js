@@ -107,10 +107,26 @@ export const useChatStore = create(
         try {
           const res = await axiosInstance.get(`/messages/${userId}`);
           set({ messages: res.data });
+          // Opening the conversation is as good as reading everything in
+          // it — clear any seen backlog from this sender.
+          get().markMessagesSeen(userId);
         } catch (error) {
           toast.error(error.response?.data?.message || "Failed to load messages");
         } finally {
           set({ isMessagesLoading: false });
+        }
+      },
+
+      // Tells the backend I've read everything `userId` has sent me, and
+      // (via socket, server-side) lets their client flip their sent
+      // ticks from grey to blue. Fire-and-forget — a failure here just
+      // means ticks catch up next time the conversation is reopened.
+      markMessagesSeen: async (userId) => {
+        if (!userId) return;
+        try {
+          await axiosInstance.put(`/messages/seen/${userId}`);
+        } catch (error) {
+          console.log("Error in markMessagesSeen", error.message);
         }
       },
 
@@ -143,12 +159,32 @@ export const useChatStore = create(
           set({ messages: [...get().messages, newMessage] });
 
           get().getConversations();
+          // The conversation is open right now, so this counts as seen
+          // immediately rather than waiting for the next getMessages call.
+          get().markMessagesSeen(userId);
+        });
+
+        socket.off("messagesSeen");
+        socket.on("messagesSeen", ({ seenBy }) => {
+          // Only relevant if seenBy is the person whose conversation is
+          // currently loaded — everything in `messages` right now was
+          // sent to or received from them.
+          if (String(seenBy) !== String(userId)) return;
+
+          set({
+            messages: get().messages.map((message) =>
+              String(message.receiverId) === String(seenBy)
+                ? { ...message, seen: true }
+                : message,
+            ),
+          });
         });
       },
 
       unsubscribeFromMessages: () => {
         const socket = useAuthStore.getState().socket;
         socket?.off("newMessage");
+        socket?.off("messagesSeen");
       },
 
       setSelectedUser: (selectedUser) => set({ selectedUser }),
