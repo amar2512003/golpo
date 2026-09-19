@@ -234,6 +234,21 @@ export const useChatStore = create(
           set({ isSendingMedia: false });
         }
       },
+
+      // Stickers send instantly as their own text message (no composer
+      // text involved) so picking one doesn't clobber whatever's already
+      // typed.
+      sendStickerMessage: async (conversationId, sticker) => {
+        if (!conversationId || !sticker) return false;
+        return get().sendMessage({ text: sticker });
+      },
+
+      // GIFs are already-hosted images (from the GIF picker), so they go
+      // straight through as an imageUrl — no file upload needed.
+      sendGifMessage: async (conversationId, gifUrl) => {
+        if (!conversationId || !gifUrl) return false;
+        return get().sendMessage({ imageUrl: gifUrl });
+      },
     }),
     {
       name: "imessage-storage",

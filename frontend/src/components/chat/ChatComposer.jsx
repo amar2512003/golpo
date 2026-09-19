@@ -15,10 +15,14 @@ export function ChatComposer() {
   const sendMediaMessage = useChatStore((state) => state.sendMediaMessage);
   const isSendingMedia = useChatStore((state) => state.isSendingMedia);
   const sendTextMessage = useChatStore((state) => state.sendTextMessage);
+  const sendStickerMessage = useChatStore((state) => state.sendStickerMessage);
+  const sendGifMessage = useChatStore((state) => state.sendGifMessage);
 
   const sendGroupMediaMessage = useGroupStore((state) => state.sendGroupMediaMessage);
   const isSendingGroupMedia = useGroupStore((state) => state.isSendingGroupMedia);
   const sendGroupTextMessage = useGroupStore((state) => state.sendGroupTextMessage);
+  const sendGroupStickerMessage = useGroupStore((state) => state.sendGroupStickerMessage);
+  const sendGroupGifMessage = useGroupStore((state) => state.sendGroupGifMessage);
 
   const { activeConversationId, activeConversationType } = useSelectedConversation();
   const { playRandomKeyStrokeSound } = useKeyboardSound();
@@ -67,6 +71,24 @@ export function ChatComposer() {
     playSoundIfEnabled();
   };
 
+  // Stickers and GIFs send immediately rather than going through the
+  // composer text — picking one shouldn't touch a draft already in progress.
+  const handleSelectSticker = async (sticker) => {
+    const didSendMessage = isGroup
+      ? await sendGroupStickerMessage(activeConversationId, sticker)
+      : await sendStickerMessage(activeConversationId, sticker);
+
+    if (didSendMessage) playSoundIfEnabled();
+  };
+
+  const handleSelectGif = async (gifUrl) => {
+    const didSendMessage = isGroup
+      ? await sendGroupGifMessage(activeConversationId, gifUrl)
+      : await sendGifMessage(activeConversationId, gifUrl);
+
+    if (didSendMessage) playSoundIfEnabled();
+  };
+
   return (
     <footer className="chat-composer relative shrink-0 border-t border-border px-1.5 pb-2 pt-2 sm:px-2">
       {isSending ? (
@@ -104,6 +126,8 @@ export function ChatComposer() {
           {isEmojiPickerOpen ? (
             <EmojiPicker
               onSelectEmoji={handleSelectEmoji}
+              onSelectSticker={handleSelectSticker}
+              onSelectGif={handleSelectGif}
               onClose={() => setIsEmojiPickerOpen(false)}
             />
           ) : null}

@@ -208,7 +208,7 @@ export async function getGroupMessages(req, res) {
 export async function sendGroupMessage(req, res) {
   try {
     const { groupId } = req.params;
-    const { text } = req.body;
+    const { text, imageUrl: providedImageUrl } = req.body;
     const senderId = req.user._id;
 
     const group = await Group.findById(groupId);
@@ -221,7 +221,13 @@ export async function sendGroupMessage(req, res) {
       return res.status(403).json({ message: "Not a member of this group" });
     }
 
-    let imageUrl;
+    // Stickers and GIFs are already-hosted images (a sticker pack asset or
+    // a GIF picker result), so they're sent as a plain URL instead of a
+    // file upload — no need to round-trip them through ImageKit.
+    let imageUrl =
+      typeof providedImageUrl === "string" && providedImageUrl.startsWith("http")
+        ? providedImageUrl
+        : undefined;
     let videoUrl;
 
     if (req.file) {

@@ -160,6 +160,7 @@ export function GroupCallModal() {
       <div className="relative z-10 mb-4 mt-1 flex items-center justify-between px-1 sm:px-3">
         <div className="flex min-w-0 items-center gap-2.5">
           <Avatar className="h-9 w-9 shrink-0 ring-2 ring-white/10">
+            <Avatar.Image src={group?.groupPic} alt={groupName} />
             <Avatar.Fallback className="text-sm">{getInitials(groupName || "?")}</Avatar.Fallback>
           </Avatar>
           <div className="min-w-0">

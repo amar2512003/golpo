@@ -259,6 +259,20 @@ export const useGroupStore = create((set, get) => ({
     }
   },
 
+  // Stickers send instantly as their own text message (no composer text
+  // involved) so picking one doesn't clobber whatever's already typed.
+  sendGroupStickerMessage: async (groupId, sticker) => {
+    if (!groupId || !sticker) return false;
+    return get().sendGroupMessage({ text: sticker });
+  },
+
+  // GIFs are already-hosted images (from the GIF picker), so they go
+  // straight through as an imageUrl — no file upload needed.
+  sendGroupGifMessage: async (groupId, gifUrl) => {
+    if (!groupId || !gifUrl) return false;
+    return get().sendGroupMessage({ imageUrl: gifUrl });
+  },
+
   // Live messages for whichever group is currently open. Own messages are
   // skipped here since sendGroupMessage already appended them locally —
   // this mirrors useChatStore.subscribeToMessages' senderId filter.

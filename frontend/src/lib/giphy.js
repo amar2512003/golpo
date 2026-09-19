@@ -1,0 +1,36 @@
+// Thin wrapper around the GIPHY API for the composer's GIF tab.
+//
+// Falls back to GIPHY's public beta key (used all over their own docs for
+// demos/testing) so the picker works out of the box. It's rate-limited
+// (42 requests/hour), so for real production traffic grab a free key at
+// https://developers.giphy.com and set VITE_GIPHY_API_KEY in the frontend
+// env — everything here already reads from it.
+const GIPHY_API_KEY = import.meta.env.VITE_GIPHY_API_KEY || "dc6zaTOxFJmzC";
+const GIPHY_BASE_URL = "https://api.giphy.com/v1/gifs";
+
+async function giphyRequest(endpoint, params) {
+  const url = new URL(`${GIPHY_BASE_URL}/${endpoint}`);
+  url.searchParams.set("api_key", GIPHY_API_KEY);
+  url.searchParams.set("limit", "24");
+  url.searchParams.set("rating", "pg-13");
+  Object.entries(params || {}).forEach(([key, value]) => url.searchParams.set(key, value));
+
+  const res = await fetch(url.toString());
+  if (!res.ok) throw new Error("Failed to load GIFs");
+
+  const { data } = await res.json();
+  return data.map((gif) => ({
+    id: gif.id,
+    previewUrl: gif.images.fixed_width_small?.url || gif.images.fixed_height_small?.url,
+    fullUrl: gif.images.original?.url || gif.images.fixed_height?.url,
+    title: gif.title || "GIF",
+  }));
+}
+
+export function fetchTrendingGifs() {
+  return giphyRequest("trending");
+}
+
+export function searchGifs(query) {
+  return giphyRequest("search", { q: query });
+}
