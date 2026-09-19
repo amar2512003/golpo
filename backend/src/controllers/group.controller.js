@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import mongoose from "mongoose";
 import Group, { MAX_GROUP_MEMBERS } from "../models/group.model.js";
 import GroupMessage from "../models/groupMessage.model.js";
 import { hasImageKitConfig, uploadChatMedia } from "../lib/imagekit.js";
@@ -300,6 +301,19 @@ export async function addMembers(req, res) {
 export async function removeMember(req, res) {
   try {
     const { groupId, memberId } = req.params;
+
+    // Both params come straight from the URL, so guard against a
+    // malformed id (e.g. a stale/garbage value from the client) before
+    // it ever reaches Mongoose — an invalid ObjectId here used to throw
+    // a CastError that fell through to the generic 500 below instead of
+    // a proper 400.
+    if (
+      !mongoose.Types.ObjectId.isValid(groupId) ||
+      !mongoose.Types.ObjectId.isValid(memberId)
+    ) {
+      return res.status(400).json({ message: "Invalid group or member id" });
+    }
+
     const requesterId = req.user._id;
 
     const group = await Group.findById(groupId);
@@ -316,10 +330,22 @@ export async function removeMember(req, res) {
       return res.status(400).json({ message: "Admin can't remove themselves — use leave instead" });
     }
 
+    if (!isMember(group, memberId)) {
+      return res.status(404).json({ message: "That person isn't in this group" });
+    }
+
     group.members = group.members.filter((id) => id.toString() !== memberId);
     await group.save();
 
-    removeUserFromGroupCall(groupId, memberId);
+    // Dropping the removed member out of any live call for this group is
+    // a nice-to-have, not something that should ever fail the actual
+    // removal — isolate it so a socket-layer hiccup can't turn a
+    // successful DB update into a 500 for the admin.
+    try {
+      removeUserFromGroupCall(groupId, memberId);
+    } catch (socketError) {
+      console.error("Error clearing removed member from group call:", socketError);
+    }
 
     const populatedGroup = await group.populate("members admin createdBy", "-clerkId");
 
@@ -328,7 +354,7 @@ export async function removeMember(req, res) {
 
     res.status(200).json(populatedGroup);
   } catch (error) {
-    console.error("Error in removeMember:", error.message);
+    console.error("Error in removeMember:", error);
     res.status(500).json({ message: "Internal server error" });
   }
 }

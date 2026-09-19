@@ -1,4 +1,3 @@
-import { useWallpaper } from "../context/wallpaper";
 import { useChatStore } from "../store/useChatStore";
 import { useGroupStore } from "../store/useGroupStore";
 import { useSelectedConversation } from "../hooks/useSelectedConversation";
@@ -12,8 +11,6 @@ import { GroupCallModal } from "../components/chat/GroupCallModal";
 import { GroupCallBanner } from "../components/chat/GroupCallBanner";
 
 function ChatPage() {
-  const { frameStyle } = useWallpaper();
-
   const getConversations = useChatStore((state) => state.getConversations);
   const getMessages = useChatStore((state) => state.getMessages);
   const subscribeToMessages = useChatStore((state) => state.subscribeToMessages);
@@ -63,10 +60,7 @@ function ChatPage() {
 
   return (
     <>
-      <div
-        className="chat-page flex h-dvh flex-col overflow-hidden p-2 sm:p-3 md:p-8"
-        style={frameStyle}
-      >
+      <div className="chat-page flex h-dvh flex-col overflow-hidden p-2 sm:p-3 md:p-8">
         <div className="chat-shell mx-auto flex min-h-0 w-full max-w-6xl flex-1 overflow-hidden rounded-2xl border border-border bg-background text-foreground">
           <ChatSidebar />
 

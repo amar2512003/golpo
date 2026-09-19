@@ -1,10 +1,11 @@
 import { Button, TextArea } from "@heroui/react";
-import { ImageIcon, LoaderIcon, SendHorizontalIcon } from "lucide-react";
-import { useRef } from "react";
+import { ImageIcon, LoaderIcon, SendHorizontalIcon, SmileIcon } from "lucide-react";
+import { useRef, useState } from "react";
 import useKeyboardSound from "../../hooks/useKeyboardSound";
 import { useChatStore } from "../../store/useChatStore";
 import { useGroupStore } from "../../store/useGroupStore";
 import { useSelectedConversation } from "../../hooks/useSelectedConversation";
+import { EmojiPicker } from "./EmojiPicker";
 
 export function ChatComposer() {
   const composerText = useChatStore((state) => state.composerText);
@@ -22,6 +23,8 @@ export function ChatComposer() {
   const { activeConversationId, activeConversationType } = useSelectedConversation();
   const { playRandomKeyStrokeSound } = useKeyboardSound();
   const mediaInputRef = useRef(null);
+
+  const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
 
   const isGroup = activeConversationType === "group";
   const isSending = isGroup ? isSendingGroupMedia : isSendingMedia;
@@ -58,8 +61,14 @@ export function ChatComposer() {
     if (didSendMessage) playSoundIfEnabled();
   };
 
+  // Appends the emoji to whatever's already typed.
+  const handleSelectEmoji = (emoji) => {
+    setComposerText(`${composerText}${emoji}`);
+    playSoundIfEnabled();
+  };
+
   return (
-    <footer className="chat-composer shrink-0 border-t border-border px-1.5 pb-2 pt-2 sm:px-2">
+    <footer className="chat-composer relative shrink-0 border-t border-border px-1.5 pb-2 pt-2 sm:px-2">
       {isSending ? (
         <div className="mx-auto mb-2 flex max-w-full items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2 text-sm text-muted">
           <LoaderIcon
@@ -70,7 +79,7 @@ export function ChatComposer() {
           <span className="truncate">Uploading media...</span>
         </div>
       ) : null}
-      <div className="mx-auto flex w-full max-w-full items-end gap-1.5 px-0.5 sm:gap-2 sm:px-1">
+      <div className="relative mx-auto flex w-full max-w-full items-end gap-1.5 px-0.5 sm:gap-2 sm:px-1">
         <input
           ref={mediaInputRef}
           type="file"
@@ -90,6 +99,27 @@ export function ChatComposer() {
         >
           <ImageIcon className="size-5 sm:size-6" strokeWidth={2} />
         </Button>
+
+        <div className="relative shrink-0 self-end">
+          {isEmojiPickerOpen ? (
+            <EmojiPicker
+              onSelectEmoji={handleSelectEmoji}
+              onClose={() => setIsEmojiPickerOpen(false)}
+            />
+          ) : null}
+          <Button
+            variant="ghost"
+            isIconOnly
+            isDisabled={isSending}
+            aria-pressed={isEmojiPickerOpen}
+            aria-label="Open emoji picker"
+            className="size-9 touch-manipulation text-accent"
+            onPress={() => setIsEmojiPickerOpen((open) => !open)}
+          >
+            <SmileIcon className="size-5 sm:size-6" strokeWidth={2} />
+          </Button>
+        </div>
+
         <TextArea
           fullWidth
           variant="secondary"
