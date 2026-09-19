@@ -8,10 +8,10 @@ function AuthPage() {
 
   return (
     <div
-      className="box-border flex h-dvh flex-col overflow-y-auto p-3 sm:p-5 md:p-8"
+      className="auth-page box-border flex h-dvh flex-col overflow-y-auto p-3 sm:p-5 md:p-8"
       style={frameStyle}
     >
-      <div className="mx-auto flex w-full max-w-368 flex-1 flex-col overflow-hidden rounded-3xl border border-border bg-background text-foreground">
+      <div className="auth-shell mx-auto flex w-full max-w-368 flex-1 flex-col overflow-hidden rounded-3xl border border-border bg-background text-foreground">
         <AuthHeader />
 
         <main className="relative flex flex-1 flex-col overflow-hidden md:flex-row">

@@ -1,5 +1,5 @@
 const cardClassName = [
-  "relative overflow-hidden rounded-[1.75rem]",
+  "auth-card relative overflow-hidden rounded-[1.75rem]",
   "border border-black/8 bg-white/75 backdrop-blur-2xl",
   "shadow-[0_32px_90px_-24px_rgba(0,0,0,0.18),0_0_1px_rgba(0,0,0,0.06)]",
   "dark:border-white/12 dark:bg-[#141416]/82",

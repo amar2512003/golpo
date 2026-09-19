@@ -17,7 +17,7 @@ export function ConversationRow({ user, selected, onSelect }) {
     <button
       type="button"
       onClick={onSelect}
-      className={`flex w-full items-center gap-3 border-b border-border px-3 py-2.5 text-left ${
+      className={`conversation-row flex w-full items-center gap-3 border-b border-border px-3 py-2.5 text-left ${
         selected ? "bg-accent-soft" : ""
       }`}
     >

@@ -64,14 +64,14 @@ function ChatPage() {
   return (
     <>
       <div
-        className="flex h-dvh flex-col overflow-hidden p-2 sm:p-3 md:p-8"
+        className="chat-page flex h-dvh flex-col overflow-hidden p-2 sm:p-3 md:p-8"
         style={frameStyle}
       >
-        <div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 overflow-hidden rounded-2xl border border-border bg-background text-foreground">
+        <div className="chat-shell mx-auto flex min-h-0 w-full max-w-6xl flex-1 overflow-hidden rounded-2xl border border-border bg-background text-foreground">
           <ChatSidebar />
 
           <div
-            className={`min-h-0 flex-1 flex-col overflow-hidden ${
+            className={`chat-thread min-h-0 flex-1 flex-col overflow-hidden ${
               !isLargeScreen && !activeConversationId ? "hidden lg:flex" : "flex"
             }`}
           >

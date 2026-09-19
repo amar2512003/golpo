@@ -80,7 +80,7 @@ function ChatSidebar() {
 
   return (
     <aside
-      className={`min-h-0 w-full shrink-0 flex-col overflow-hidden border-r border-border lg:w-72 ${
+      className={`chat-sidebar min-h-0 w-full shrink-0 flex-col overflow-hidden border-r border-border lg:w-72 ${
         !isLargeScreen && activeConversationId ? "hidden lg:flex" : "flex"
       }`}
     >
@@ -89,6 +89,7 @@ function ChatSidebar() {
           <AppLogo size={32} className="size-8 shrink-0 rounded-[9px] sm:size-8.5" alt="" />
           <p className="flex-1 truncate text-lg font-bold tracking-tight sm:text-[22px]">
             {APP_NAME}
+            <span className="brand-tagline">More than just chats</span>
           </p>
           <UserButton
             appearance={{
@@ -104,9 +105,9 @@ function ChatSidebar() {
         selectedKey={sidebarTab}
         onSelectionChange={(key) => setSidebarTab(String(key))}
         variant="secondary"
-        className="flex min-h-0 flex-1 flex-col overflow-hidden"
+        className="sidebar-tabs flex min-h-0 flex-1 flex-col overflow-hidden"
       >
-        <div className="shrink-0 border-b border-border px-3 pb-2 pt-2">
+        <div className="sidebar-search shrink-0 border-b border-border px-3 pb-2 pt-2">
           <SearchField
             fullWidth
             variant="secondary"
@@ -125,7 +126,7 @@ function ChatSidebar() {
           </SearchField>
         </div>
 
-        <Tabs.ListContainer className="shrink-0 border-b border-border px-2 pb-2 pt-1">
+        <Tabs.ListContainer className="sidebar-navigation shrink-0 border-b border-border px-2 pb-2 pt-1">
           <Tabs.List className="w-full gap-0.5">
             <Tabs.Tab id="chats" className="flex-1 justify-center gap-1.5">
               <MessageSquareIcon className="size-3.5 opacity-80" aria-hidden />

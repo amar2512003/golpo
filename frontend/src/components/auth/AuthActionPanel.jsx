@@ -13,7 +13,7 @@ const logoTileClassName = [
 ].join(" ");
 
 const continueButtonClassName = [
-  "group relative h-13 overflow-hidden rounded-2xl text-[15px] font-semibold",
+  "auth-continue group relative h-13 overflow-hidden rounded-2xl text-[15px] font-semibold",
   "shadow-xl shadow-accent/45 dark:shadow-accent/35",
   "after:pointer-events-none after:absolute after:inset-0 after:rounded-2xl",
   "after:shadow-[inset_0_1px_0_rgba(255,255,255,0.25)]",
@@ -24,7 +24,7 @@ export function AuthActionPanel() {
   const clerk = useClerk();
 
   return (
-    <section className="relative flex flex-1 flex-col items-stretch justify-center overflow-hidden px-5 py-12 sm:px-10 md:px-14 md:py-10 lg:px-16">
+    <section className="auth-action relative flex flex-1 flex-col items-stretch justify-center overflow-hidden px-5 py-12 sm:px-10 md:px-14 md:py-10 lg:px-16">
       <AuthCardShell>
         <div className="mb-8 flex flex-col items-center text-center">
           <div className="relative mb-5">
@@ -40,10 +40,13 @@ export function AuthActionPanel() {
           <div className="flex items-center justify-center gap-1.5 text-accent">
             <SparklesIcon className="size-3.5" strokeWidth={2} aria-hidden />
             <span className="text-[11px] font-semibold uppercase tracking-[0.18em]">
-              Secure entry
+              Your people. One place.
             </span>
           </div>
         </div>
+
+        <h1 className="auth-welcome">Welcome to Goppo</h1>
+        <p className="auth-description">A little hello can go a long way. Sign in and pick up where you left off.</p>
 
         {
           <Button
@@ -56,7 +59,7 @@ export function AuthActionPanel() {
             }}
           >
             <span className="relative z-1 flex items-center justify-center gap-2">
-              Continue
+              Sign in to continue
               <ArrowRightIcon
                 className="size-4 transition-transform group-hover:translate-x-0.5"
                 aria-hidden

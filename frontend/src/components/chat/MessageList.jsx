@@ -36,15 +36,15 @@ export function MessageList() {
   const dayGroups = activeConversation ? groupMessagesByDay(activeConversation.messages) : [];
 
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+    <div className="message-stage relative flex min-h-0 flex-1 flex-col overflow-hidden">
       {activeConversation ? (
         <div
           ref={messagesScrollRef}
-          className="flex flex-1 flex-col gap-1 overflow-y-auto overscroll-contain px-2 py-3 sm:px-3 sm:py-4"
+          className="message-scroll flex flex-1 flex-col gap-1 overflow-y-auto overscroll-contain px-2 py-3 sm:px-3 sm:py-4"
         >
           {dayGroups.map((group) => (
             <div key={group.dayKey} className="flex flex-col gap-1">
-              <p className="mb-3 mt-3 text-center text-[11px] font-medium uppercase tracking-wide text-muted first:mt-0">
+              <p className="message-date mb-3 mt-3 text-center text-[11px] font-medium uppercase tracking-wide text-muted first:mt-0">
                 {group.label}
               </p>
               {group.messages.map((message) => (

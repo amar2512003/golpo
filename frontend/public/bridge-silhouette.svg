@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="360" viewBox="0 0 800 360" fill="none">
+<defs><linearGradient id="gold" x2="0" y2="1"><stop stop-color="#ffb05e"/><stop offset="1" stop-color="#bc5c30" stop-opacity=".2"/></linearGradient></defs>
+<g stroke="url(#gold)" stroke-width="2" opacity=".55">
+<path d="M0 240h800M0 250h800M110 250V95l22-25 22 25v155M620 250V40l26-30 26 30v210M110 110h44m-44 25h44m-44 35h44m-44 40h44M620 58h52m-52 35h52m-52 45h52m-52 55h52"/>
+<path d="m110 95 44 40-44 35 44 40-44 40m44-155-44 40 44 35-44 40 44 40m466-210 52 53-52 45 52 55-52 57m52-210-52 53 52 45-52 55 52 57M0 204 132 75C310 272 467 269 646 15L800 180"/>
+<path d="M25 194v46m30-66v66m30-88v88m100-116v116m30-87v87m30-64v64m30-45v45m30-31v31m30-21v21m30-16v16m30-17v17m30-24v24m30-36v36m30-54v54m30-79v79m30-110v110m30-148v148m80-185v185m30-153v153m30-121v121m30-89v89"/>
+<path opacity=".3" d="M60 279h220m190 0h260M10 298h180m170 0h280M120 317h210m120 0h320M50 340h200m150 0h260"/>
+</g></svg>
