@@ -72,7 +72,24 @@ export async function getUserGroups(req, res) {
       .populate("members admin createdBy", "-clerkId")
       .sort({ updatedAt: -1 });
 
-    res.status(200).json(groups);
+    // A group's own updatedAt only moves when the group is edited, not when
+    // someone posts — so look up the newest message per group. The sidebar
+    // uses this to interleave groups with DMs in the Chats tab.
+    const lastMessages = await GroupMessage.aggregate([
+      { $match: { groupId: { $in: groups.map((group) => group._id) } } },
+      { $group: { _id: "$groupId", lastMessageAt: { $max: "$createdAt" } } },
+    ]);
+    const lastMessageAtByGroup = new Map(
+      lastMessages.map(({ _id, lastMessageAt }) => [String(_id), lastMessageAt]),
+    );
+
+    res.status(200).json(
+      groups.map((group) => ({
+        ...group.toObject(),
+        // Groups nobody has posted in yet sort by when they were created.
+        lastMessageAt: lastMessageAtByGroup.get(String(group._id)) ?? group.createdAt,
+      })),
+    );
   } catch (error) {
     console.error("Error in getUserGroups:", error.message);
     res.status(500).json({ message: "Internal server error" });

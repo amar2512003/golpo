@@ -87,8 +87,14 @@ export async function getConversationsForSidebar(req, res) {
       // single deleted account would throw and blank out every
       // conversation for this user, not just that one.
       { $match: { user: { $ne: [] } } },
-      // 6. Pull that profile out of the array and make it the document.
-      { $replaceRoot: { newRoot: { $first: "$user" } } },
+      // 6. Pull that profile out of the array and make it the document,
+      // keeping the last-message time on it so the sidebar can interleave
+      // DMs with group chats by recency.
+      {
+        $replaceRoot: {
+          newRoot: { $mergeObjects: [{ $first: "$user" }, { lastMessageAt: "$lastMessageAt" }] },
+        },
+      },
       // 7. Hide the private clerkId field from the result.
       { $project: { clerkId: 0 } },
     ]);

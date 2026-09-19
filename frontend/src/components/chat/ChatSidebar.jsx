@@ -15,6 +15,8 @@ import { UserSearchPanel } from "./UserSearchPanel";
 function mapUserForList(user, onlineUsers) {
   return {
     conversationId: user._id,
+    kind: "dm",
+    lastActivityAt: user.lastMessageAt,
     id: user._id,
     name: user.fullName,
     avatarUrl: user.profilePic,
@@ -33,6 +35,8 @@ function mapGroupForList(group, liveCall) {
   const memberCount = group.members?.length || 0;
   return {
     id: group._id,
+    kind: "group",
+    lastActivityAt: group.lastMessageAt ?? group.createdAt,
     name: group.name,
     avatarUrl: group.groupPic,
     initials: getInitials(group.name),
@@ -68,11 +72,15 @@ function ChatSidebar() {
   const conversationUsers = conversations.map((user) => mapUserForList(user, onlineUsers));
   const groupItems = groups.map((group) => mapGroupForList(group, activeGroupCalls[group._id]));
 
-  const filteredConversations = normalizedSearchQuery
-    ? conversationUsers.filter((conversation) =>
-        conversation.peer.name.toLowerCase().includes(normalizedSearchQuery),
-      )
-    : conversationUsers;
+  // The Chats tab is one list: DMs and groups together, newest activity first.
+  const getActivityTime = (item) => (item.lastActivityAt ? new Date(item.lastActivityAt).getTime() : 0);
+  const allChats = [...conversationUsers, ...groupItems].sort(
+    (a, b) => getActivityTime(b) - getActivityTime(a),
+  );
+
+  const filteredChats = normalizedSearchQuery
+    ? allChats.filter((chat) => chat.name.toLowerCase().includes(normalizedSearchQuery))
+    : allChats;
 
   const filteredGroups = normalizedSearchQuery
     ? groupItems.filter((group) => group.name.toLowerCase().includes(normalizedSearchQuery))
@@ -107,24 +115,25 @@ function ChatSidebar() {
         variant="secondary"
         className="sidebar-tabs flex min-h-0 flex-1 flex-col overflow-hidden"
       >
-        <div className="sidebar-search shrink-0 border-b border-border px-3 pb-2 pt-2">
-          <SearchField
-            fullWidth
-            variant="secondary"
-            className="w-full"
-            value={searchQuery}
-            onChange={setSearchQuery}
-          >
-            <SearchField.Group className="rounded-xl">
-              <SearchField.SearchIcon />
-              <SearchField.Input
-                placeholder={sidebarTab === "users" ? "Find someone by email below" : "Search"}
-                disabled={sidebarTab === "users"}
-              />
-              {searchQuery ? <SearchField.ClearButton /> : null}
-            </SearchField.Group>
-          </SearchField>
-        </div>
+        {/* Filters the Chats/Groups lists. The Users tab has its own email
+            search inside the panel, so this bar would do nothing there. */}
+        {sidebarTab !== "users" ? (
+          <div className="sidebar-search shrink-0 border-b border-border px-3 pb-2 pt-2">
+            <SearchField
+              fullWidth
+              variant="secondary"
+              className="w-full"
+              value={searchQuery}
+              onChange={setSearchQuery}
+            >
+              <SearchField.Group className="rounded-xl">
+                <SearchField.SearchIcon />
+                <SearchField.Input placeholder="Search" />
+                {searchQuery ? <SearchField.ClearButton /> : null}
+              </SearchField.Group>
+            </SearchField>
+          </div>
+        ) : null}
 
         <Tabs.ListContainer className="sidebar-navigation shrink-0 border-b border-border px-2 pb-2 pt-1">
           <Tabs.List className="w-full gap-0.5">
@@ -147,21 +156,30 @@ function ChatSidebar() {
           id="chats"
           className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto outline-none"
         >
-          {filteredConversations.length === 0 ? (
+          {filteredChats.length === 0 ? (
             <p className="px-4 py-6 text-center text-sm text-muted">
               No conversations match your search.
             </p>
           ) : (
-            filteredConversations.map((conversation) => (
-              <ConversationRow
-                key={conversation.id}
-                user={conversation}
-                selected={
-                  activeConversationType === "dm" && conversation.id === activeConversationId
-                }
-                onSelect={() => setActiveConversationId(conversation.id)}
-              />
-            ))
+            filteredChats.map((chat) =>
+              chat.kind === "group" ? (
+                <ConversationRow
+                  key={`group:${chat.id}`}
+                  user={chat}
+                  selected={
+                    activeConversationType === "group" && chat.id === activeConversationId
+                  }
+                  onSelect={() => setActiveGroupId(chat.id)}
+                />
+              ) : (
+                <ConversationRow
+                  key={`dm:${chat.id}`}
+                  user={chat}
+                  selected={activeConversationType === "dm" && chat.id === activeConversationId}
+                  onSelect={() => setActiveConversationId(chat.id)}
+                />
+              ),
+            )
           )}
         </Tabs.Panel>
 

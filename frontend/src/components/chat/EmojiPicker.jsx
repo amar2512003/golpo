@@ -153,15 +153,21 @@ function GifsTab({ onSelectGif }) {
             <p className="text-xs font-medium">No GIFs found</p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-1.5">
+          <div className="flex flex-col gap-2">
             {gifs.map((gif) => (
               <button
                 key={gif.id}
                 type="button"
                 onClick={() => onSelectGif?.(gif.fullUrl)}
-                className="overflow-hidden rounded-lg bg-surface-secondary transition-opacity hover:opacity-80"
+                className="block w-full shrink-0 overflow-hidden rounded-xl bg-surface-secondary transition-opacity hover:opacity-80"
               >
-                <img src={gif.previewUrl} alt={gif.title} className="h-20 w-full object-cover sm:h-24" />
+                <img
+                  src={gif.previewUrl}
+                  alt={gif.title}
+                  loading="lazy"
+                  style={{ aspectRatio: `${gif.previewWidth} / ${gif.previewHeight}` }}
+                  className="block max-h-56 w-full object-cover"
+                />
               </button>
             ))}
           </div>
@@ -207,7 +213,9 @@ export function EmojiPicker({ onSelectEmoji, onSelectSticker, onSelectGif, onClo
   return (
     <div
       ref={panelRef}
-      className="emoji-picker absolute bottom-full left-0 z-20 mb-2 flex h-80 w-72 flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-xl sm:w-80"
+      className={`emoji-picker absolute bottom-full left-0 z-20 mb-2 flex max-h-[70dvh] w-72 flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-xl sm:w-80 ${
+        activeTab === "gifs" ? "h-96" : "h-80"
+      }`}
       role="dialog"
       aria-label="Emoji picker"
     >

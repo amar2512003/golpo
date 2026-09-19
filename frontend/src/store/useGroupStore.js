@@ -313,7 +313,14 @@ export const useGroupStore = create((set, get) => ({
       if (String(senderId) === String(authUser?._id)) return;
       if (String(newMessage.groupId) !== String(get().activeGroupId)) return;
 
-      set({ groupMessages: [...get().groupMessages, newMessage] });
+      set({
+        groupMessages: [...get().groupMessages, newMessage],
+        groups: get().groups.map((group) =>
+          String(group._id) === String(newMessage.groupId)
+            ? { ...group, lastMessageAt: newMessage.createdAt }
+            : group,
+        ),
+      });
     });
   },
 
@@ -347,7 +354,11 @@ export const useGroupStore = create((set, get) => ({
 
     socket.on("groupUpdated", (group) => {
       set((state) => ({
-        groups: state.groups.map((existing) => (existing._id === group._id ? group : existing)),
+        groups: state.groups.map((existing) =>
+          existing._id === group._id
+            ? { ...group, lastMessageAt: existing.lastMessageAt }
+            : existing,
+        ),
       }));
     });
 

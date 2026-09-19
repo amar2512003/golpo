@@ -71,7 +71,8 @@ html.dark .chat-shell { box-shadow: 0 28px 100px #0008; }
 
 .chat-composer { margin: 0 16px 16px; padding: 10px; border: 1px solid var(--goppo-edge); border-radius: 20px; background: var(--goppo-panel); box-shadow: 0 8px 28px #0000000f; }
 .chat-composer textarea { padding: 12px 16px; background: var(--goppo-soft); min-height: 44px; border-radius: 999px; }
-.chat-composer button { border-radius: 50%; min-width: 40px; height: 40px; }
+/* Round icon buttons only — the emoji/GIF picker is nested in the composer and must keep its own shapes. */
+.chat-composer button:not(.emoji-picker button) { border-radius: 50%; min-width: 40px; height: 40px; }
 
 .emoji-picker { box-shadow: 0 18px 45px #00000022; }
 html.dark .emoji-picker { box-shadow: 0 18px 45px #0009; }
