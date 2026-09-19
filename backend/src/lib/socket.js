@@ -41,7 +41,7 @@ function removeUserSocket(userId, socketId) {
   if (sockets.size === 0) delete userSocketMap[userId];
 }
 
-// groupId -> Map<userId, { socketId, callType }>
+// groupId -> Map<userId, { socketId, callType, sharingScreen }>
 // Tracks who is actively "in call" for a group, separate from group
 // membership. A group can have many members but only some of them may
 // be on the call at a given moment.
@@ -298,6 +298,27 @@ io.on("connection", (socket) => {
     }
   );
 
+  // 1:1 screen sharing. The video itself goes over the existing peer
+  // connection via replaceTrack() (no renegotiation), so this is only a
+  // small "the other person is presenting" flag the receiving UI uses to
+  // switch layout — same idea as the group mute/camera state below.
+  socket.on(
+    "call:screen-share",
+    ({ toUserId, sharing }) => {
+      if (!userId || !toUserId) return;
+
+      const targetSocketId =
+        getReceiverSocketId(toUserId);
+
+      if (targetSocketId) {
+        io.to(targetSocketId).emit("call:screen-share", {
+          fromUserId: userId.toString(),
+          sharing: !!sharing,
+        });
+      }
+    }
+  );
+
   // ---------------- Group Call Signaling (mesh) ----------------
   //
   // Group calls layer on top of 1:1 signaling: call:offer/answer/
@@ -308,7 +329,7 @@ io.on("connection", (socket) => {
 
   socket.on(
     "call:group-join",
-    async ({ groupId, callType = "video" }, callback) => {
+    async ({ groupId, callType = "video", sharingScreen = false }, callback) => {
       try {
         if (!userId || !groupId) {
           return callback?.({ error: "Missing groupId" });
@@ -342,11 +363,21 @@ io.on("connection", (socket) => {
         // joiner knows who to open a peer connection + send an offer to.
         const existingParticipants = Array.from(participants.entries())
           .filter(([id]) => id !== key)
-          .map(([id, info]) => ({ userId: id, callType: info.callType }));
+          .map(([id, info]) => ({
+            userId: id,
+            callType: info.callType,
+            // Lets a late joiner (or someone reconnecting) know who is
+            // already presenting, since they missed the original event.
+            sharingScreen: !!info.sharingScreen,
+          }));
 
         const isNewCall = participants.size === 0;
 
-        participants.set(key, { socketId: socket.id, callType });
+        participants.set(key, {
+          socketId: socket.id,
+          callType,
+          sharingScreen: !!sharingScreen,
+        });
         socket.join(getCallRoomId(groupId));
 
         callback?.({ participants: existingParticipants });
@@ -357,6 +388,7 @@ io.on("connection", (socket) => {
           groupId,
           userId: key,
           callType,
+          sharingScreen: !!sharingScreen,
         });
 
         // First person in — tell the rest of the group (not just the
@@ -388,6 +420,29 @@ io.on("connection", (socket) => {
       userId: userId.toString(),
       muted,
       cameraOff,
+    });
+  });
+
+  // Broadcasts that this user started/stopped presenting their screen.
+  // The screen itself travels peer-to-peer over each pairwise connection
+  // (replaceTrack, no renegotiation); this flag is what lets everyone
+  // else promote them to the main stage. It's also remembered on the
+  // participant record so anyone who joins mid-share gets it in their
+  // join response instead of having to guess from the video.
+  socket.on("call:group-screen-share", ({ groupId, sharing }) => {
+    if (!groupId || !userId) return;
+
+    const participant = getCallParticipants(groupId)?.get(userId.toString());
+
+    // Only someone actually on this call (from this socket) can present.
+    if (!participant || participant.socketId !== socket.id) return;
+
+    participant.sharingScreen = !!sharing;
+
+    socket.to(getCallRoomId(groupId)).emit("call:group-screen-share", {
+      groupId,
+      userId: userId.toString(),
+      sharing: !!sharing,
     });
   });
 

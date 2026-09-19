@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Avatar, Button } from "@heroui/react";
-import { PhoneOffIcon, PhoneIcon } from "lucide-react";
+import { PhoneOffIcon, PhoneIcon, ScreenShareIcon, ScreenShareOffIcon } from "lucide-react";
 import { useCallStore } from "../../store/useCallStore";
+import { canShareScreen } from "../../lib/screenShare";
 
 function formatDuration(totalSeconds) {
   const m = Math.floor(totalSeconds / 60).toString().padStart(2, "0");
@@ -27,11 +28,12 @@ function CallerAvatar({ name, avatarUrl, pulsing, large }) {
   );
 }
 
-function CallButton({ onPress, variant, label, children }) {
-  const tone =
-    variant === "accept"
-      ? "bg-emerald-500 hover:bg-emerald-400"
-      : "bg-red-500 hover:bg-red-400";
+function CallButton({ onPress, variant, label, active, children }) {
+  let tone = "bg-red-500 hover:bg-red-400";
+  if (variant === "accept") tone = "bg-emerald-500 hover:bg-emerald-400";
+  if (variant === "toggle") {
+    tone = active ? "bg-[#5b6dfa] hover:bg-[#7180fb]" : "bg-white/10 hover:bg-white/20 backdrop-blur-md";
+  }
 
   return (
     <div className="flex flex-col items-center gap-2">
@@ -39,6 +41,7 @@ function CallButton({ onPress, variant, label, children }) {
         isIconOnly
         onPress={onPress}
         aria-label={label}
+        aria-pressed={variant === "toggle" ? !!active : undefined}
         className={`h-14 w-14 rounded-full text-white shadow-lg shadow-black/30 ${tone}`}
       >
         {children}
@@ -57,6 +60,10 @@ export function VideoCallModal() {
   const acceptCall = useCallStore((state) => state.acceptCall);
   const rejectCall = useCallStore((state) => state.rejectCall);
   const endCall = useCallStore((state) => state.endCall);
+  const isScreenSharing = useCallStore((state) => state.isScreenSharing);
+  const remoteSharing = useCallStore((state) => state.remoteSharing);
+  const startScreenShare = useCallStore((state) => state.startScreenShare);
+  const stopScreenShare = useCallStore((state) => state.stopScreenShare);
 
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
@@ -64,11 +71,16 @@ export function VideoCallModal() {
 
   const [duration, setDuration] = useState(0);
 
+  const isVideo = callType === "video";
+  // An audio call flips to the video layout while the other person is
+  // presenting, so their screen has somewhere to render.
+  const showVideoLayout = isVideo || remoteSharing;
+
   useEffect(() => {
     if (localVideoRef.current && localStream) {
       localVideoRef.current.srcObject = localStream;
     }
-  }, [localStream]);
+  }, [localStream, isVideo]);
 
   useEffect(() => {
     if (remoteVideoRef.current && remoteStream) {
@@ -83,7 +95,7 @@ export function VideoCallModal() {
         .play()
         .catch((err) => console.log("Audio autoplay blocked:", err));
     }
-  }, [remoteStream]);
+  }, [remoteStream, showVideoLayout]);
 
   useEffect(() => {
     if (callStatus !== "connected") {
@@ -97,7 +109,6 @@ export function VideoCallModal() {
 
   if (callStatus === "idle") return null;
 
-  const isVideo = callType === "video";
   const isRinging = callStatus === "calling" || callStatus === "incoming";
 
   return (
@@ -121,26 +132,39 @@ export function VideoCallModal() {
           </span>
         </div>
 
+        {isScreenSharing ? (
+          <div className="flex items-center gap-2 rounded-full bg-[#5b6dfa]/80 px-3 py-1.5 text-xs font-medium text-white backdrop-blur-md">
+            <ScreenShareIcon className="size-3.5" aria-hidden />
+            Sharing screen
+          </div>
+        ) : null}
+
         <div className="rounded-full bg-white/8 px-3 py-1.5 text-xs font-medium text-white/60 backdrop-blur-md">
           {isVideo ? "Video call" : "Audio call"}
         </div>
       </div>
 
-      {isVideo ? (
+      {showVideoLayout ? (
         <div className="relative z-0 flex h-full w-full flex-1 items-center justify-center overflow-hidden">
           {remoteStream ? (
             <video
               ref={remoteVideoRef}
               autoPlay
               playsInline
-              className="h-full w-full object-cover"
+              className={`h-full w-full ${remoteSharing ? "bg-black object-contain" : "object-cover"}`}
             />
           ) : (
             <CallerAvatar name={callPartner?.fullName} avatarUrl={callPartner?.profilePic} pulsing={isRinging} />
           )}
 
-          <div className="absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-black/60 to-transparent" />
-          <div className="absolute inset-x-0 bottom-0 h-36 bg-gradient-to-t from-black/70 to-transparent" />
+          {/* Scrims keep the overlaid UI legible over camera video; they'd
+              just dim a shared screen, so they're skipped while presenting. */}
+          {!remoteSharing ? (
+            <>
+              <div className="absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-black/60 to-transparent" />
+              <div className="absolute inset-x-0 bottom-0 h-36 bg-gradient-to-t from-black/70 to-transparent" />
+            </>
+          ) : null}
 
           {!remoteStream ? (
             <p className="absolute bottom-28 left-1/2 -translate-x-1/2 text-center text-base font-medium text-white/80">
@@ -148,7 +172,7 @@ export function VideoCallModal() {
             </p>
           ) : null}
 
-          {localStream ? (
+          {localStream && isVideo ? (
             <video
               ref={localVideoRef}
               autoPlay
@@ -187,9 +211,26 @@ export function VideoCallModal() {
             </CallButton>
           </>
         ) : (
-          <CallButton onPress={endCall} variant="reject" label="End call">
-            <PhoneOffIcon className="size-6" />
-          </CallButton>
+          <>
+            {callStatus === "connected" && canShareScreen() ? (
+              <CallButton
+                onPress={isScreenSharing ? stopScreenShare : startScreenShare}
+                variant="toggle"
+                active={isScreenSharing}
+                label={isScreenSharing ? "Stop sharing" : "Share screen"}
+              >
+                {isScreenSharing ? (
+                  <ScreenShareOffIcon className="size-6" />
+                ) : (
+                  <ScreenShareIcon className="size-6" />
+                )}
+              </CallButton>
+            ) : null}
+
+            <CallButton onPress={endCall} variant="reject" label="End call">
+              <PhoneOffIcon className="size-6" />
+            </CallButton>
+          </>
         )}
       </div>
     </div>

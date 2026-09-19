@@ -183,6 +183,13 @@ export const useAuthStore = create((set, get) => ({
       });
     });
 
+    // The other person in a 1:1 call started/stopped sharing their screen
+    socket.on("call:screen-share", (data) => {
+      import("./useCallStore").then(({ useCallStore }) => {
+        useCallStore.getState().handleRemoteScreenShare(data);
+      });
+    });
+
     // ---------------- Group Call Signaling (mesh) ----------------
 
     socket.on("call:group-user-joined", (data) => {
@@ -206,6 +213,13 @@ export const useAuthStore = create((set, get) => ({
     socket.on("call:group-media-state", (data) => {
       import("./useGroupCallStore").then(({ useGroupCallStore }) => {
         useGroupCallStore.getState().handleRemoteMediaState(data);
+      });
+    });
+
+    // Someone in the group call started/stopped presenting their screen
+    socket.on("call:group-screen-share", (data) => {
+      import("./useGroupCallStore").then(({ useGroupCallStore }) => {
+        useGroupCallStore.getState().handleRemoteScreenShare(data);
       });
     });
 

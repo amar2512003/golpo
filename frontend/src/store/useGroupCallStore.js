@@ -1,6 +1,14 @@
 import { create } from "zustand";
 import toast from "react-hot-toast";
 import { useAuthStore } from "./useAuthStore";
+import {
+  attachLocalMedia,
+  canShareScreen,
+  captureScreen,
+  getVideoSender,
+  resolveRemoteStream,
+  stopStream,
+} from "../lib/screenShare";
 
 const ICE_SERVERS = {
   iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
@@ -129,7 +137,14 @@ export const useGroupCallStore = create((set, get) => ({
   localCameraOff: false,
   localSpeaking: false,
 
-  // userId -> { stream, connectionState, muted, cameraOff, speaking }
+  // Screen sharing. The camera track stays in `localStream` the whole
+  // time — while presenting we only swap what each peer connection is
+  // *sending* (replaceTrack), so stopping is instant and the camera
+  // doesn't need another permission prompt.
+  localSharingScreen: false,
+  screenStream: null,
+
+  // userId -> { stream, connectionState, muted, cameraOff, speaking, sharingScreen }
   peers: {},
 
   joinCall: async (group, callType = "video") => {
@@ -159,7 +174,7 @@ export const useGroupCallStore = create((set, get) => ({
 
     s.emit(
       "call:group-join",
-      { groupId: group._id, callType },
+      { groupId: group._id, callType, sharingScreen: false },
       (response) => {
         if (!response || response.error) {
           toast.error(response?.error || "Couldn't join the call");
@@ -171,8 +186,8 @@ export const useGroupCallStore = create((set, get) => ({
 
         // Existing participants: we're the newcomer, so we initiate a
         // peer connection + offer to each of them.
-        response.participants.forEach(({ userId }) => {
-          get()._createPeerConnection(userId, { initiator: true });
+        response.participants.forEach(({ userId, sharingScreen }) => {
+          get()._createPeerConnection(userId, { initiator: true, sharingScreen });
         });
       }
     );
@@ -200,7 +215,10 @@ export const useGroupCallStore = create((set, get) => ({
     peerConnections.clear();
     set({ status: "reconnecting", peers: {} });
 
-    s.emit("call:group-join", { groupId, callType }, (response) => {
+    // Still presenting through the drop? Tell the server so late
+    // arrivals are told about it, and fresh peer connections below
+    // pick the screen back up (see _createPeerConnection).
+    s.emit("call:group-join", { groupId, callType, sharingScreen: get().localSharingScreen }, (response) => {
       if (get().status !== "reconnecting") return; // left/torn down meanwhile
 
       if (!response || response.error) {
@@ -210,8 +228,8 @@ export const useGroupCallStore = create((set, get) => ({
       }
 
       set({ status: "in-call" });
-      response.participants.forEach(({ userId }) => {
-        get()._createPeerConnection(userId, { initiator: true });
+      response.participants.forEach(({ userId, sharingScreen }) => {
+        get()._createPeerConnection(userId, { initiator: true, sharingScreen });
       });
     });
   },
@@ -232,7 +250,7 @@ export const useGroupCallStore = create((set, get) => ({
   // after us. We don't initiate anything here; we just make sure a
   // placeholder tile exists so they show up as "connecting" while we
   // wait for their incoming offer.
-  handleUserJoined: ({ userId }) => {
+  handleUserJoined: ({ userId, sharingScreen }) => {
     if (userId === myId()) return;
 
     set((state) => ({
@@ -244,6 +262,7 @@ export const useGroupCallStore = create((set, get) => ({
           muted: false,
           cameraOff: false,
           speaking: false,
+          sharingScreen: !!sharingScreen,
         },
       },
     }));
@@ -327,6 +346,20 @@ export const useGroupCallStore = create((set, get) => ({
     });
   },
 
+  handleRemoteScreenShare: ({ userId, sharing }) => {
+    set((state) => {
+      const existing = state.peers[userId];
+      if (!existing) return state;
+
+      return {
+        peers: {
+          ...state.peers,
+          [userId]: { ...existing, sharingScreen: !!sharing },
+        },
+      };
+    });
+  },
+
   leaveCall: () => {
     const { groupId } = get();
     if (groupId) {
@@ -367,6 +400,96 @@ export const useGroupCallStore = create((set, get) => ({
     });
   },
 
+  // Mesh version of the 1:1 approach: there's one RTCPeerConnection per
+  // participant, so swap the screen into *each* one's video sender.
+  // replaceTrack() needs no renegotiation, so nothing goes over the
+  // signaling socket except a small "I'm presenting" flag for labels.
+  startScreenShare: async () => {
+    const { status, groupId, localSharingScreen } = get();
+
+    if (status !== "in-call" || !groupId || localSharingScreen) return;
+
+    if (!canShareScreen()) {
+      toast.error("Screen sharing isn't supported on this device");
+      return;
+    }
+
+    let screenStream;
+    try {
+      screenStream = await captureScreen();
+    } catch (err) {
+      console.error("Error starting screen share:", err);
+      toast.error("Couldn't start screen sharing");
+      return;
+    }
+
+    if (!screenStream) return; // picker dismissed
+
+    // The call may have ended while the picker was open.
+    if (get().status !== "in-call" || get().groupId !== groupId) {
+      stopStream(screenStream);
+      return;
+    }
+
+    const screenTrack = screenStream.getVideoTracks()[0];
+    if (!screenTrack) {
+      stopStream(screenStream);
+      toast.error("Couldn't start screen sharing");
+      return;
+    }
+
+    // Fires when the user hits the browser's own "Stop sharing" bar, so
+    // our state can't get out of sync with what the browser is doing.
+    screenTrack.onended = () => get().stopScreenShare();
+
+    // Set before swapping so any peer connection created while this is
+    // in flight already sees us as presenting.
+    set({ screenStream, localSharingScreen: true });
+
+    const results = await Promise.allSettled(
+      Array.from(peerConnections.values()).map(({ pc }) =>
+        getVideoSender(pc)?.replaceTrack(screenTrack)
+      )
+    );
+
+    results.forEach((result) => {
+      if (result.status === "rejected") {
+        console.error("Error sending screen track to a peer:", result.reason);
+      }
+    });
+
+    // Stopped (or the call ended) while the swap was in flight — the
+    // stop path has already told everyone, so don't announce a share
+    // that's no longer happening.
+    if (!get().localSharingScreen) return;
+
+    socket()?.emit("call:group-screen-share", { groupId, sharing: true });
+  },
+
+  stopScreenShare: () => {
+    const { screenStream, localStream, groupId, localSharingScreen } = get();
+
+    if (!localSharingScreen) return;
+
+    // Update state first so this is safe to call twice (e.g. our own
+    // button plus the browser's stop bar firing `ended`).
+    stopStream(screenStream);
+    set({ screenStream: null, localSharingScreen: false });
+
+    // Back to the camera — or, in an audio call, to sending nothing.
+    const cameraTrack = localStream?.getVideoTracks()[0] || null;
+
+    peerConnections.forEach(({ pc }) => {
+      getVideoSender(pc)
+        ?.replaceTrack(cameraTrack)
+        .catch((err) => console.error("Error restoring camera track:", err));
+    });
+
+    if (groupId) {
+      socket()?.emit("call:group-screen-share", { groupId, sharing: false });
+    }
+  },
+
   // ---------------- Internal ----------------
 
   // Creates (or returns the existing) RTCPeerConnection for a remote
@@ -374,8 +497,8 @@ export const useGroupCallStore = create((set, get) => ({
   // `initiator: true` means we're the one who should send the offer
   // once the connection is set up (and, later, who drives ICE restarts
   // for this pair — see _attemptIceRestart).
-  _createPeerConnection: (userId, { initiator }) => {
-    const { localStream, groupId, callType } = get();
+  _createPeerConnection: (userId, { initiator, sharingScreen = false }) => {
+    const { localStream, groupId, callType, screenStream } = get();
     const s = socket();
 
     if (!s || !localStream || !groupId) return null;
@@ -384,18 +507,24 @@ export const useGroupCallStore = create((set, get) => ({
     const pc = new RTCPeerConnection(ICE_SERVERS);
     peerConnections.set(userId, { pc, initiator, restartAttempts: 0 });
 
-    localStream.getTracks().forEach((track) => {
-      pc.addTrack(track, localStream);
-    });
+    // If we're presenting right now (this connection is for someone who
+    // just joined, or we just reconnected), start out sending the screen
+    // rather than the camera.
+    attachLocalMedia(pc, localStream, screenStream?.getVideoTracks()[0] || null);
 
     pc.ontrack = (event) => {
-      const stream = event.streams[0];
+      const stream = resolveRemoteStream(event, get().peers[userId]?.stream);
 
       set((state) => ({
         peers: {
           ...state.peers,
           [userId]: {
-            ...(state.peers[userId] || { muted: false, cameraOff: false, speaking: false }),
+            ...(state.peers[userId] || {
+              muted: false,
+              cameraOff: false,
+              speaking: false,
+              sharingScreen: false,
+            }),
             stream,
             connectionState: "connected",
           },
@@ -468,6 +597,7 @@ export const useGroupCallStore = create((set, get) => ({
           muted: false,
           cameraOff: false,
           speaking: false,
+          sharingScreen: !!sharingScreen,
         },
       },
     }));
@@ -530,13 +660,14 @@ export const useGroupCallStore = create((set, get) => ({
   },
 
   _teardown: () => {
-    const { localStream } = get();
+    const { localStream, screenStream } = get();
 
     peerConnections.forEach((_entry, userId) => closePeerConnection(userId));
     peerConnections.clear();
     stopAllAudioMonitors();
 
     localStream?.getTracks().forEach((track) => track.stop());
+    stopStream(screenStream);
 
     set({
       status: "idle",
@@ -547,6 +678,8 @@ export const useGroupCallStore = create((set, get) => ({
       localMuted: false,
       localCameraOff: false,
       localSpeaking: false,
+      localSharingScreen: false,
+      screenStream: null,
       peers: {},
     });
   },
