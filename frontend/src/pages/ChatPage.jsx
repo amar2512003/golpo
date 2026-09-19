@@ -1,5 +1,6 @@
 import { useChatStore } from "../store/useChatStore";
 import { useGroupStore } from "../store/useGroupStore";
+import { useTypingStore } from "../store/useTypingStore";
 import { useSelectedConversation } from "../hooks/useSelectedConversation";
 import { useEffect } from "react";
 import ChatSidebar from "../components/chat/ChatSidebar";
@@ -23,6 +24,8 @@ function ChatPage() {
   const subscribeToGroupEvents = useGroupStore((state) => state.subscribeToGroupEvents);
   const unsubscribeFromGroupEvents = useGroupStore((state) => state.unsubscribeFromGroupEvents);
   const activeGroupId = useGroupStore((state) => state.activeGroupId);
+  const subscribeToTyping = useTypingStore((state) => state.subscribeToTyping);
+  const unsubscribeFromTyping = useTypingStore((state) => state.unsubscribeFromTyping);
 
   const { activeConversation, activeConversationId, activeConversationType, isLargeScreen } =
     useSelectedConversation();
@@ -38,6 +41,13 @@ function ChatPage() {
     subscribeToGroupEvents();
     return () => unsubscribeFromGroupEvents();
   }, [subscribeToGroupEvents, unsubscribeFromGroupEvents]);
+
+  // Typing state is tracked for every chat (not just the open one) so it's
+  // already correct the moment you switch to a chat someone is typing in.
+  useEffect(() => {
+    subscribeToTyping();
+    return () => unsubscribeFromTyping();
+  }, [subscribeToTyping, unsubscribeFromTyping]);
 
   useEffect(() => {
     if (!activeConversationId || activeConversationType !== "dm") return;

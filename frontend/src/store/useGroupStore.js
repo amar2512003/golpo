@@ -3,6 +3,7 @@ import toast from "react-hot-toast";
 
 import { axiosInstance } from "../lib/axios";
 import { useAuthStore } from "./useAuthStore";
+import { getGroupTypingKey, useTypingStore } from "./useTypingStore";
 
 // Kept in sync with backend MAX_GROUP_MEMBERS (models/group.model.js).
 export const MAX_GROUP_MEMBERS = 6;
@@ -259,6 +260,23 @@ export const useGroupStore = create((set, get) => ({
     }
   },
 
+  // Voice notes are uploaded like other media; `duration` (seconds, from the
+  // recorder) rides along because webm files don't carry it reliably.
+  sendGroupVoiceMessage: async ({ groupId, file, duration }) => {
+    if (!groupId || !file) return false;
+
+    const formData = new FormData();
+    formData.append("audioDuration", String(duration ?? ""));
+    formData.append("media", file);
+
+    set({ isSendingGroupMedia: true });
+    try {
+      return await get().sendGroupMessage(formData);
+    } finally {
+      set({ isSendingGroupMedia: false });
+    }
+  },
+
   // Stickers send instantly as their own text message (no composer text
   // involved) so picking one doesn't clobber whatever's already typed.
   sendGroupStickerMessage: async (groupId, sticker) => {
@@ -286,6 +304,11 @@ export const useGroupStore = create((set, get) => ({
     socket.on("newGroupMessage", (newMessage) => {
       const authUser = useAuthStore.getState().authUser;
       const senderId = newMessage.senderId?._id || newMessage.senderId;
+
+      // A message arriving means its sender is done typing.
+      useTypingStore
+        .getState()
+        .clearTyping(getGroupTypingKey(newMessage.groupId), senderId);
 
       if (String(senderId) === String(authUser?._id)) return;
       if (String(newMessage.groupId) !== String(get().activeGroupId)) return;

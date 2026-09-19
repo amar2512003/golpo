@@ -13,6 +13,7 @@ live : https://golpooo.vercel.app/
 - 💬 Real-time messaging with Socket.io
 - 🟢 Online/offline user presence
 - 🖼️ Image sharing with ImageKit
+- 🎙️ Voice messages (record and send voice notes in DMs and groups)
 - 🎨 Customizable themes
 - 🖥️ Custom chat wallpapers
 - 🔊 Keyboard and interaction sounds

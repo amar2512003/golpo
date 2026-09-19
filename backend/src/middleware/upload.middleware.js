@@ -8,9 +8,10 @@ export const upload = multer({
   fileFilter: (req, file, cb) => {
     const isImage = file.mimetype.startsWith("image/");
     const isVideo = file.mimetype.startsWith("video/");
+    const isAudio = file.mimetype.startsWith("audio/");
 
-    if (!isImage && !isVideo) {
-      cb(new Error("Only image and video uploads are allowed"));
+    if (!isImage && !isVideo && !isAudio) {
+      cb(new Error("Only image, video and audio uploads are allowed"));
       return;
     }
 

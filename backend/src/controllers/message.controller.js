@@ -2,6 +2,7 @@ import User from "../models/user.model.js";
 import Message from "../models/message.model.js";
 import { hasImageKitConfig, uploadChatMedia } from "../lib/imagekit.js";
 import { getReceiverSocketId, io } from "../lib/socket.js";
+import { parseAudioDuration } from "../lib/voice.js";
 
 function escapeRegex(str) {
   return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -161,6 +162,8 @@ export async function sendMessage(req, res) {
         ? providedImageUrl
         : undefined;
     let videoUrl;
+    let audioUrl;
+    let audioDuration;
 
     if (req.file) {
       if (!hasImageKitConfig()) {
@@ -169,7 +172,10 @@ export async function sendMessage(req, res) {
 
       const url = await uploadChatMedia(req.file);
       if (req.file.mimetype.startsWith("video/")) videoUrl = url;
-      else imageUrl = url;
+      else if (req.file.mimetype.startsWith("audio/")) {
+        audioUrl = url;
+        audioDuration = parseAudioDuration(req.body.audioDuration);
+      } else imageUrl = url;
     }
 
     const newMessage = new Message({
@@ -178,6 +184,8 @@ export async function sendMessage(req, res) {
       text,
       image: imageUrl,
       video: videoUrl,
+      audio: audioUrl,
+      audioDuration,
     });
 
     await newMessage.save();

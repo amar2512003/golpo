@@ -21,6 +21,15 @@ const groupMessageSchema = new mongoose.Schema(
     video: {
       type: String,
     },
+    // Voice notes: URL of the recorded clip + its length in seconds (the
+    // recorder's own duration, since MediaRecorder files often lack duration
+    // metadata and the player can't read it back from the file).
+    audio: {
+      type: String,
+    },
+    audioDuration: {
+      type: Number,
+    },
   },
   { timestamps: true },
 );

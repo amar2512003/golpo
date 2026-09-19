@@ -28,6 +28,8 @@ function mapUserToConversation({ user, messages, authUser, onlineUsers }) {
     createdAt: message.createdAt,
     imageUrl: message.image,
     videoUrl: message.video,
+    audioUrl: message.audio,
+    audioDuration: message.audioDuration,
     seen: message.seen,
   }));
 
@@ -63,6 +65,8 @@ function mapGroupToConversation({ group, messages, authUser }) {
       createdAt: message.createdAt,
       imageUrl: message.image,
       videoUrl: message.video,
+      audioUrl: message.audio,
+      audioDuration: message.audioDuration,
       senderName: isMe ? null : message.senderId?.fullName,
     };
   });

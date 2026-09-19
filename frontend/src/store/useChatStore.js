@@ -3,6 +3,7 @@ import { persist } from "zustand/middleware";
 
 import { axiosInstance } from "../lib/axios";
 import { useAuthStore } from "./useAuthStore";
+import { getDmTypingKey, useTypingStore } from "./useTypingStore";
 import toast from "react-hot-toast";
 
 export const useChatStore = create(
@@ -153,6 +154,11 @@ export const useChatStore = create(
 
         socket.off("newMessage");
         socket.on("newMessage", (newMessage) => {
+          // A message arriving means its sender is done typing.
+          useTypingStore
+            .getState()
+            .clearTyping(getDmTypingKey(newMessage.senderId), newMessage.senderId);
+
           // if im not the receiver don't do anything just return
           if (String(newMessage.senderId) !== String(userId)) return;
 
@@ -225,6 +231,23 @@ export const useChatStore = create(
         if (!conversationId || !file) return false;
 
         const formData = new FormData();
+        formData.append("media", file);
+
+        set({ isSendingMedia: true });
+        try {
+          return await get().sendMessage(formData);
+        } finally {
+          set({ isSendingMedia: false });
+        }
+      },
+
+      // Voice notes are uploaded like other media; `duration` (seconds, from
+      // the recorder) rides along because webm files don't carry it reliably.
+      sendVoiceMessage: async ({ conversationId, file, duration }) => {
+        if (!conversationId || !file) return false;
+
+        const formData = new FormData();
+        formData.append("audioDuration", String(duration ?? ""));
         formData.append("media", file);
 
         set({ isSendingMedia: true });

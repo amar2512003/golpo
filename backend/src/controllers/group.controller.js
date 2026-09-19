@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 import Group, { MAX_GROUP_MEMBERS } from "../models/group.model.js";
 import GroupMessage from "../models/groupMessage.model.js";
 import { hasImageKitConfig, uploadChatMedia } from "../lib/imagekit.js";
+import { parseAudioDuration } from "../lib/voice.js";
 import { io, joinUserToGroupRooms, endCallForGroup, removeUserFromGroupCall } from "../lib/socket.js";
 
 function isMember(group, userId) {
@@ -229,6 +230,8 @@ export async function sendGroupMessage(req, res) {
         ? providedImageUrl
         : undefined;
     let videoUrl;
+    let audioUrl;
+    let audioDuration;
 
     if (req.file) {
       if (!hasImageKitConfig()) {
@@ -237,7 +240,10 @@ export async function sendGroupMessage(req, res) {
 
       const url = await uploadChatMedia(req.file);
       if (req.file.mimetype.startsWith("video/")) videoUrl = url;
-      else imageUrl = url;
+      else if (req.file.mimetype.startsWith("audio/")) {
+        audioUrl = url;
+        audioDuration = parseAudioDuration(req.body.audioDuration);
+      } else imageUrl = url;
     }
 
     const newMessage = await GroupMessage.create({
@@ -246,6 +252,8 @@ export async function sendGroupMessage(req, res) {
       text,
       image: imageUrl,
       video: videoUrl,
+      audio: audioUrl,
+      audioDuration,
     });
 
     const populatedMessage = await newMessage.populate("senderId", "-clerkId");

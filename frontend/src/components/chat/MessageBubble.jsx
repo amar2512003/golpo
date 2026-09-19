@@ -1,6 +1,7 @@
 import { CheckCheck } from "lucide-react";
 import { withTransform } from "../../lib/imagekit";
 import { MessageVideo } from "./MessageVideo";
+import { VoiceMessagePlayer } from "./VoiceMessagePlayer";
 
 // Compress + size images for the bubble (q-auto works for images; f-auto picks WebP/AVIF).
 const IMAGE_TRANSFORM = "q-auto,w-640,f-auto";
@@ -15,8 +16,9 @@ export function MessageBubble({ message }) {
   const isOwnMessage = message.role === "me";
   const hasImage = Boolean(message.imageUrl);
   const hasVideo = Boolean(message.videoUrl);
+  const hasAudio = Boolean(message.audioUrl);
   const isSticker =
-    !hasImage && !hasVideo && STICKER_TEXT_REGEX.test((message.text || "").trim());
+    !hasImage && !hasVideo && !hasAudio && STICKER_TEXT_REGEX.test((message.text || "").trim());
   // `seen` only exists on DM messages (group messages don't track it),
   // so ticks are scoped to 1:1 chats for free.
   const showReceipt = isOwnMessage && typeof message.seen === "boolean";
@@ -69,6 +71,13 @@ export function MessageBubble({ message }) {
           />
         ) : null}
         {hasVideo ? <MessageVideo src={message.videoUrl} /> : null}
+        {hasAudio ? (
+          <VoiceMessagePlayer
+            src={message.audioUrl}
+            duration={message.audioDuration}
+            isOwnMessage={isOwnMessage}
+          />
+        ) : null}
         {message.text ? (
           <p className="whitespace-pre-wrap wrap-break-word">{message.text}</p>
         ) : null}
