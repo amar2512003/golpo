@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { getInitials, useSelectedConversation } from "../../hooks/useSelectedConversation";
+import { formatLastMessagePreview, formatSidebarTime } from "../../lib/utils";
 import { useAuthStore } from "../../store/useAuthStore";
 import { useChatStore } from "../../store/useChatStore";
 import { useGroupStore } from "../../store/useGroupStore";
@@ -12,7 +13,18 @@ import { ConversationRow } from "./ConversationRow";
 import { CreateGroupModal } from "./CreateGroupModal";
 import { UserSearchPanel } from "./UserSearchPanel";
 
-function mapUserForList(user, onlineUsers) {
+// Builds the row's subtitle: "You: <preview>" when I sent the last
+// message, otherwise just the preview. Falls back to the given default
+// (member count for a group with no messages yet) once there's nothing
+// to preview at all.
+function buildSubtitle({ lastMessage, authUserId, fallback }) {
+  const preview = formatLastMessagePreview(lastMessage);
+  if (!preview) return fallback;
+  const isMine = lastMessage?.senderId && String(lastMessage.senderId) === String(authUserId);
+  return isMine ? `You: ${preview}` : preview;
+}
+
+function mapUserForList(user, onlineUsers, authUserId) {
   return {
     conversationId: user._id,
     kind: "dm",
@@ -22,6 +34,10 @@ function mapUserForList(user, onlineUsers) {
     avatarUrl: user.profilePic,
     initials: getInitials(user.fullName),
     isOnline: onlineUsers.includes(user._id),
+    subtitle: buildSubtitle({ lastMessage: user.lastMessage, authUserId, fallback: "" }),
+    isSubtitleUnread: Boolean(user.unreadCount),
+    unreadCount: user.unreadCount || 0,
+    timestamp: formatSidebarTime(user.lastMessageAt),
     peer: {
       name: user.fullName,
       avatarUrl: user.profilePic,
@@ -31,8 +47,9 @@ function mapUserForList(user, onlineUsers) {
   };
 }
 
-function mapGroupForList(group, liveCall) {
+function mapGroupForList(group, liveCall, authUserId) {
   const memberCount = group.members?.length || 0;
+  const memberCountLabel = `${memberCount} member${memberCount === 1 ? "" : "s"}`;
   return {
     id: group._id,
     kind: "group",
@@ -40,7 +57,14 @@ function mapGroupForList(group, liveCall) {
     name: group.name,
     avatarUrl: group.groupPic,
     initials: getInitials(group.name),
-    subtitle: `${memberCount} member${memberCount === 1 ? "" : "s"}`,
+    subtitle: buildSubtitle({
+      lastMessage: group.lastMessage,
+      authUserId,
+      fallback: memberCountLabel,
+    }),
+    isSubtitleUnread: Boolean(group.unreadCount),
+    unreadCount: group.unreadCount || 0,
+    timestamp: formatSidebarTime(group.lastMessageAt ?? group.createdAt),
     showOnlineIndicator: false,
     liveCall,
   };
@@ -62,6 +86,7 @@ function ChatSidebar() {
   const activeGroupCalls = useGroupStore((state) => state.activeGroupCalls);
 
   const onlineUsers = useAuthStore((state) => state.onlineUsers);
+  const authUserId = useAuthStore((state) => state.authUser?._id);
 
   const { activeConversationId, activeConversationType, isLargeScreen } = useSelectedConversation();
 
@@ -69,8 +94,10 @@ function ChatSidebar() {
 
   const normalizedSearchQuery = searchQuery.trim().toLowerCase();
 
-  const conversationUsers = conversations.map((user) => mapUserForList(user, onlineUsers));
-  const groupItems = groups.map((group) => mapGroupForList(group, activeGroupCalls[group._id]));
+  const conversationUsers = conversations.map((user) => mapUserForList(user, onlineUsers, authUserId));
+  const groupItems = groups.map((group) =>
+    mapGroupForList(group, activeGroupCalls[group._id], authUserId),
+  );
 
   // The Chats tab is one list: DMs and groups together, newest activity first.
   const getActivityTime = (item) => (item.lastActivityAt ? new Date(item.lastActivityAt).getTime() : 0);

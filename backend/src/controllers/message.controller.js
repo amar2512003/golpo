@@ -70,32 +70,71 @@ export async function getConversationsForSidebar(req, res) {
     const conversations = await Message.aggregate([
       // 1. Keep only the messages I sent or received.
       { $match: { $or: [{ senderId: loggedInUserId }, { receiverId: loggedInUserId }] } },
-      // 2. Collapse them into one row per chat partner, noting our latest message time.
+      // 2. Sort oldest-first so the $last accumulators below land on the
+      // actual most recent message once grouped.
+      { $sort: { createdAt: 1 } },
+      // 3. Collapse them into one row per chat partner: our latest message
+      // time, a preview of that last message, and how many of the
+      // partner's messages to me are still unseen.
       {
         $group: {
           // The partner is the other person on the message (not me).
           _id: { $cond: [{ $eq: ["$senderId", loggedInUserId] }, "$receiverId", "$senderId"] },
           lastMessageAt: { $max: "$createdAt" },
+          lastMessageText: { $last: "$text" },
+          lastMessageImage: { $last: "$image" },
+          lastMessageVideo: { $last: "$video" },
+          lastMessageAudio: { $last: "$audio" },
+          lastMessageSenderId: { $last: "$senderId" },
+          unreadCount: {
+            $sum: {
+              $cond: [
+                {
+                  $and: [
+                    { $eq: ["$receiverId", loggedInUserId] },
+                    { $eq: ["$seen", false] },
+                  ],
+                },
+                1,
+                0,
+              ],
+            },
+          },
         },
       },
-      // 3. Put the most recent conversation at the top.
+      // 4. Put the most recent conversation at the top.
       { $sort: { lastMessageAt: -1 } },
-      // 4. Look up each partner's user profile (comes back as an array).
+      // 5. Look up each partner's user profile (comes back as an array).
       { $lookup: { from: "users", localField: "_id", foreignField: "_id", as: "user" } },
-      // 5. Drop any conversation whose partner account no longer exists —
+      // 6. Drop any conversation whose partner account no longer exists —
       // $replaceRoot below needs a real document, and without this a
       // single deleted account would throw and blank out every
       // conversation for this user, not just that one.
       { $match: { user: { $ne: [] } } },
-      // 6. Pull that profile out of the array and make it the document,
-      // keeping the last-message time on it so the sidebar can interleave
-      // DMs with group chats by recency.
+      // 7. Pull that profile out of the array and make it the document,
+      // keeping the last-message time and preview on it so the sidebar can
+      // interleave DMs with group chats by recency and show a snippet.
       {
         $replaceRoot: {
-          newRoot: { $mergeObjects: [{ $first: "$user" }, { lastMessageAt: "$lastMessageAt" }] },
+          newRoot: {
+            $mergeObjects: [
+              { $first: "$user" },
+              {
+                lastMessageAt: "$lastMessageAt",
+                unreadCount: "$unreadCount",
+                lastMessage: {
+                  text: "$lastMessageText",
+                  image: "$lastMessageImage",
+                  video: "$lastMessageVideo",
+                  audio: "$lastMessageAudio",
+                  senderId: "$lastMessageSenderId",
+                },
+              },
+            ],
+          },
         },
       },
-      // 7. Hide the private clerkId field from the result.
+      // 8. Hide the private clerkId field from the result.
       { $project: { clerkId: 0 } },
     ]);
 

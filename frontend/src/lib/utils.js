@@ -39,3 +39,41 @@ export function getDayKey(date) {
   const d = new Date(date);
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 }
+
+// Compact timestamp for a sidebar row: just the clock time for today, a
+// short weekday for the last week, otherwise a short date — mirrors how
+// most chat apps keep the conversation list from getting noisy.
+export function formatSidebarTime(date) {
+  if (!date) return "";
+  const d = new Date(date);
+  const now = new Date();
+
+  if (isSameDay(d, now)) {
+    return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  }
+
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (isSameDay(d, yesterday)) return "Yesterday";
+
+  const withinLastWeek = now.getTime() - d.getTime() < 6 * 24 * 60 * 60 * 1000;
+  if (withinLastWeek) return d.toLocaleDateString([], { weekday: "short" });
+
+  const sameYear = d.getFullYear() === now.getFullYear();
+  return d.toLocaleDateString([], {
+    month: "short",
+    day: "numeric",
+    year: sameYear ? undefined : "numeric",
+  });
+}
+
+// Turns a conversation's lastMessage (DM or group, same shape from the
+// backend) into the one-line snippet shown under the name in the sidebar.
+export function formatLastMessagePreview(lastMessage) {
+  if (!lastMessage) return "";
+  if (lastMessage.image) return "📷 Photo";
+  if (lastMessage.video) return "📹 Video";
+  if (lastMessage.audio) return "🎤 Voice message";
+  if (lastMessage.text) return lastMessage.text;
+  return "";
+}

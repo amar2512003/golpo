@@ -54,6 +54,15 @@ const groupSchema = new mongoose.Schema(
       sparse: true,
       default: generateInviteCode,
     },
+    // Per-member "I've read everything up to here" marker, keyed by user
+    // id. Updated whenever that member opens the group's messages —
+    // mirrors the `seen` flag on DM messages, just tracked per-group
+    // instead of per-message since group reads aren't per-message here.
+    lastReadBy: {
+      type: Map,
+      of: Date,
+      default: {},
+    },
   },
   { timestamps: true },
 );

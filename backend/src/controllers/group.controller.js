@@ -72,23 +72,64 @@ export async function getUserGroups(req, res) {
       .populate("members admin createdBy", "-clerkId")
       .sort({ updatedAt: -1 });
 
+    const groupIds = groups.map((group) => group._id);
+
     // A group's own updatedAt only moves when the group is edited, not when
-    // someone posts — so look up the newest message per group. The sidebar
-    // uses this to interleave groups with DMs in the Chats tab.
+    // someone posts — so look up the newest message (and a preview of it)
+    // per group. The sidebar uses this to interleave groups with DMs in
+    // the Chats tab and to show a last-message snippet.
     const lastMessages = await GroupMessage.aggregate([
-      { $match: { groupId: { $in: groups.map((group) => group._id) } } },
-      { $group: { _id: "$groupId", lastMessageAt: { $max: "$createdAt" } } },
+      { $match: { groupId: { $in: groupIds } } },
+      { $sort: { createdAt: 1 } },
+      {
+        $group: {
+          _id: "$groupId",
+          lastMessageAt: { $max: "$createdAt" },
+          lastMessageText: { $last: "$text" },
+          lastMessageImage: { $last: "$image" },
+          lastMessageVideo: { $last: "$video" },
+          lastMessageAudio: { $last: "$audio" },
+          lastMessageSenderId: { $last: "$senderId" },
+        },
+      },
     ]);
-    const lastMessageAtByGroup = new Map(
-      lastMessages.map(({ _id, lastMessageAt }) => [String(_id), lastMessageAt]),
+    const lastMessageByGroup = new Map(lastMessages.map((row) => [String(row._id), row]));
+
+    // Unread = messages someone else sent after I last opened this group.
+    // Groups I've never opened count everything not sent by me.
+    const unreadCounts = await Promise.all(
+      groups.map((group) => {
+        const lastReadAt = group.lastReadBy?.get(String(userId));
+        return GroupMessage.countDocuments({
+          groupId: group._id,
+          senderId: { $ne: userId },
+          ...(lastReadAt ? { createdAt: { $gt: lastReadAt } } : {}),
+        });
+      }),
     );
 
     res.status(200).json(
-      groups.map((group) => ({
-        ...group.toObject(),
-        // Groups nobody has posted in yet sort by when they were created.
-        lastMessageAt: lastMessageAtByGroup.get(String(group._id)) ?? group.createdAt,
-      })),
+      groups.map((group, index) => {
+        const lastMessageRow = lastMessageByGroup.get(String(group._id));
+        const groupObject = group.toObject();
+        delete groupObject.lastReadBy;
+
+        return {
+          ...groupObject,
+          // Groups nobody has posted in yet sort by when they were created.
+          lastMessageAt: lastMessageRow?.lastMessageAt ?? group.createdAt,
+          unreadCount: unreadCounts[index],
+          lastMessage: lastMessageRow
+            ? {
+                text: lastMessageRow.lastMessageText,
+                image: lastMessageRow.lastMessageImage,
+                video: lastMessageRow.lastMessageVideo,
+                audio: lastMessageRow.lastMessageAudio,
+                senderId: lastMessageRow.lastMessageSenderId,
+              }
+            : null,
+        };
+      }),
     );
   } catch (error) {
     console.error("Error in getUserGroups:", error.message);
@@ -216,9 +257,43 @@ export async function getGroupMessages(req, res) {
       .populate("senderId", "-clerkId")
       .sort({ createdAt: 1 });
 
+    // Opening the group is as good as reading everything currently in it —
+    // same idea as markMessagesSeen for DMs, just recorded as a per-user
+    // timestamp instead of flipping a flag on each message.
+    group.lastReadBy.set(userId.toString(), new Date());
+    await group.save();
+
     res.status(200).json(messages);
   } catch (error) {
     console.error("Error in getGroupMessages:", error.message);
+    res.status(500).json({ message: "Internal server error" });
+  }
+}
+
+// Called when a new group message arrives while that group's thread is
+// already open — same idea as getGroupMessages' own mark-as-read, just
+// without re-fetching the whole message list.
+export async function markGroupMessagesSeen(req, res) {
+  try {
+    const { groupId } = req.params;
+    const userId = req.user._id;
+
+    const group = await Group.findById(groupId);
+
+    if (!group) {
+      return res.status(404).json({ message: "Group not found" });
+    }
+
+    if (!isMember(group, userId)) {
+      return res.status(403).json({ message: "Not a member of this group" });
+    }
+
+    group.lastReadBy.set(userId.toString(), new Date());
+    await group.save();
+
+    res.status(200).json({ message: "Marked as read" });
+  } catch (error) {
+    console.error("Error in markGroupMessagesSeen:", error.message);
     res.status(500).json({ message: "Internal server error" });
   }
 }

@@ -6,6 +6,15 @@ import { useAuthStore } from "./useAuthStore";
 import { getDmTypingKey, useTypingStore } from "./useTypingStore";
 import toast from "react-hot-toast";
 
+// Kept outside the store (it's a singleton module) purely so each
+// unsubscribe can remove the exact listener it added — via socket.off(event,
+// handler) — without disturbing the other "newMessage" listener. Plain
+// socket.off("newMessage") would remove *every* listener for that event,
+// which would wipe out whichever of these two got subscribed first.
+let conversationUpdateHandler = null;
+let activeDmMessageHandler = null;
+let activeDmSeenHandler = null;
+
 export const useChatStore = create(
   persist(
     (set, get) => ({
@@ -109,8 +118,15 @@ export const useChatStore = create(
           const res = await axiosInstance.get(`/messages/${userId}`);
           set({ messages: res.data });
           // Opening the conversation is as good as reading everything in
-          // it — clear any seen backlog from this sender.
+          // it — clear any seen backlog from this sender, and optimistically
+          // zero out its unread badge in the sidebar right away rather than
+          // waiting on the next getConversations() refresh.
           get().markMessagesSeen(userId);
+          set((state) => ({
+            conversations: state.conversations.map((conversation) =>
+              conversation._id === userId ? { ...conversation, unreadCount: 0 } : conversation,
+            ),
+          }));
         } catch (error) {
           toast.error(error.response?.data?.message || "Failed to load messages");
         } finally {
@@ -152,8 +168,8 @@ export const useChatStore = create(
         const socket = useAuthStore.getState().socket;
         if (!socket) return;
 
-        socket.off("newMessage");
-        socket.on("newMessage", (newMessage) => {
+        if (activeDmMessageHandler) socket.off("newMessage", activeDmMessageHandler);
+        activeDmMessageHandler = (newMessage) => {
           // A message arriving means its sender is done typing.
           useTypingStore
             .getState()
@@ -168,10 +184,11 @@ export const useChatStore = create(
           // The conversation is open right now, so this counts as seen
           // immediately rather than waiting for the next getMessages call.
           get().markMessagesSeen(userId);
-        });
+        };
+        socket.on("newMessage", activeDmMessageHandler);
 
-        socket.off("messagesSeen");
-        socket.on("messagesSeen", ({ seenBy }) => {
+        if (activeDmSeenHandler) socket.off("messagesSeen", activeDmSeenHandler);
+        activeDmSeenHandler = ({ seenBy }) => {
           // Only relevant if seenBy is the person whose conversation is
           // currently loaded — everything in `messages` right now was
           // sent to or received from them.
@@ -184,13 +201,43 @@ export const useChatStore = create(
                 : message,
             ),
           });
-        });
+        };
+        socket.on("messagesSeen", activeDmSeenHandler);
       },
 
       unsubscribeFromMessages: () => {
         const socket = useAuthStore.getState().socket;
-        socket?.off("newMessage");
-        socket?.off("messagesSeen");
+        if (socket && activeDmMessageHandler) socket.off("newMessage", activeDmMessageHandler);
+        if (socket && activeDmSeenHandler) socket.off("messagesSeen", activeDmSeenHandler);
+        activeDmMessageHandler = null;
+        activeDmSeenHandler = null;
+      },
+
+      // Session-wide (not tied to whichever DM happens to be open) so the
+      // sidebar's last-message preview and unread badge stay live for
+      // every conversation, not just the active one. subscribeToMessages
+      // above still owns appending to the open thread; this only owns
+      // keeping the conversations list itself fresh. Uses a named handler
+      // (rather than socket.off("newMessage")) so it doesn't get wiped out
+      // every time subscribeToMessages rebinds its own listener when the
+      // active conversation changes.
+      subscribeToConversationUpdates: () => {
+        const socket = useAuthStore.getState().socket;
+        if (!socket) return;
+
+        if (conversationUpdateHandler) {
+          socket.off("newMessage", conversationUpdateHandler);
+        }
+        conversationUpdateHandler = () => get().getConversations();
+        socket.on("newMessage", conversationUpdateHandler);
+      },
+
+      unsubscribeFromConversationUpdates: () => {
+        const socket = useAuthStore.getState().socket;
+        if (socket && conversationUpdateHandler) {
+          socket.off("newMessage", conversationUpdateHandler);
+        }
+        conversationUpdateHandler = null;
       },
 
       setSelectedUser: (selectedUser) => set({ selectedUser }),

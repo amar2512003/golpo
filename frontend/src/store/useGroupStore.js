@@ -8,6 +8,12 @@ import { getGroupTypingKey, useTypingStore } from "./useTypingStore";
 // Kept in sync with backend MAX_GROUP_MEMBERS (models/group.model.js).
 export const MAX_GROUP_MEMBERS = 6;
 
+// Kept outside the store (it's a singleton module) so each unsubscribe can
+// remove the exact listener it added via socket.off(event, handler) —
+// plain socket.off("newGroupMessage") would remove *both* of these.
+let activeGroupMessageHandler = null;
+let groupConversationUpdateHandler = null;
+
 // If we're on a call for a group we just lost access to (removed, left
 // elsewhere, or the group was deleted), there's no one left we're
 // allowed to be connected to — leave the call instead of lingering in it.
@@ -62,10 +68,32 @@ export const useGroupStore = create((set, get) => ({
     try {
       const res = await axiosInstance.get(`/groups/${groupId}/messages`);
       set({ groupMessages: res.data });
+      // Opening the group is as good as reading everything in it.
+      // Zero the badge locally right away rather than waiting on a round
+      // trip, then tell the backend (fire-and-forget, like DMs) so it
+      // stays correct on the next getGroups() refresh too.
+      set((state) => ({
+        groups: state.groups.map((group) =>
+          group._id === groupId ? { ...group, unreadCount: 0 } : group,
+        ),
+      }));
+      get().markGroupMessagesSeen(groupId);
     } catch (error) {
       toast.error(error.response?.data?.message || "Failed to load messages");
     } finally {
       set({ isGroupMessagesLoading: false });
+    }
+  },
+
+  // Fire-and-forget, mirroring useChatStore's markMessagesSeen — a
+  // failure here just means the unread badge catches up next time the
+  // group list refreshes.
+  markGroupMessagesSeen: async (groupId) => {
+    if (!groupId) return;
+    try {
+      await axiosInstance.put(`/groups/${groupId}/seen`);
+    } catch (error) {
+      console.log("Error in markGroupMessagesSeen", error.message);
     }
   },
 
@@ -300,8 +328,8 @@ export const useGroupStore = create((set, get) => ({
     const socket = useAuthStore.getState().socket;
     if (!socket) return;
 
-    socket.off("newGroupMessage");
-    socket.on("newGroupMessage", (newMessage) => {
+    if (activeGroupMessageHandler) socket.off("newGroupMessage", activeGroupMessageHandler);
+    activeGroupMessageHandler = (newMessage) => {
       const authUser = useAuthStore.getState().authUser;
       const senderId = newMessage.senderId?._id || newMessage.senderId;
 
@@ -321,12 +349,41 @@ export const useGroupStore = create((set, get) => ({
             : group,
         ),
       });
-    });
+
+      // This group's thread is open right now, so the message just
+      // rendered counts as read immediately rather than waiting for the
+      // next time the group list is opened.
+      get().markGroupMessagesSeen(newMessage.groupId);
+    };
+    socket.on("newGroupMessage", activeGroupMessageHandler);
   },
 
   unsubscribeFromGroupMessages: () => {
     const socket = useAuthStore.getState().socket;
-    socket?.off("newGroupMessage");
+    if (socket && activeGroupMessageHandler) socket.off("newGroupMessage", activeGroupMessageHandler);
+    activeGroupMessageHandler = null;
+  },
+
+  // Session-wide (not tied to whichever group happens to be open) so the
+  // sidebar's last-message preview and unread badge stay live for every
+  // group, not just the active one.
+  subscribeToGroupConversationUpdates: () => {
+    const socket = useAuthStore.getState().socket;
+    if (!socket) return;
+
+    if (groupConversationUpdateHandler) {
+      socket.off("newGroupMessage", groupConversationUpdateHandler);
+    }
+    groupConversationUpdateHandler = () => get().getGroups();
+    socket.on("newGroupMessage", groupConversationUpdateHandler);
+  },
+
+  unsubscribeFromGroupConversationUpdates: () => {
+    const socket = useAuthStore.getState().socket;
+    if (socket && groupConversationUpdateHandler) {
+      socket.off("newGroupMessage", groupConversationUpdateHandler);
+    }
+    groupConversationUpdateHandler = null;
   },
 
   // Membership/roster events — these apply regardless of which thread is
@@ -353,10 +410,19 @@ export const useGroupStore = create((set, get) => ({
     });
 
     socket.on("groupUpdated", (group) => {
+      // groupUpdated only carries the group's own fields (name, members,
+      // etc.) — the last-message preview and unread count are computed
+      // separately by getUserGroups, so carry those over rather than
+      // letting this overwrite them with undefined.
       set((state) => ({
         groups: state.groups.map((existing) =>
           existing._id === group._id
-            ? { ...group, lastMessageAt: existing.lastMessageAt }
+            ? {
+                ...group,
+                lastMessageAt: existing.lastMessageAt,
+                lastMessage: existing.lastMessage,
+                unreadCount: existing.unreadCount,
+              }
             : existing,
         ),
       }));

@@ -9,6 +9,7 @@ import {
   joinGroupByInvite,
   leaveGroup,
   makeAdmin,
+  markGroupMessagesSeen,
   regenerateInviteCode,
   removeMember,
   sendGroupMessage,
@@ -30,6 +31,7 @@ router.get("/invite/:inviteCode", getGroupInvitePreview);
 router.post("/invite/:inviteCode/join", joinGroupByInvite);
 
 router.get("/:groupId/messages", getGroupMessages);
+router.put("/:groupId/seen", markGroupMessagesSeen);
 router.post("/:groupId/messages", upload.single("media"), sendGroupMessage);
 router.patch("/:groupId", upload.single("groupPic"), updateGroup);
 router.delete("/:groupId", deleteGroup);
