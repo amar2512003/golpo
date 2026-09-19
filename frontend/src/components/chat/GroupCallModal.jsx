@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Avatar, Button } from "@heroui/react";
 import {
   MicIcon,
@@ -28,6 +28,12 @@ function gridColsClass(count) {
   return GRID_COLS_BY_COUNT[count] || GRID_COLS_BY_COUNT[6];
 }
 
+function formatDuration(totalSeconds) {
+  const m = Math.floor(totalSeconds / 60).toString().padStart(2, "0");
+  const s = Math.floor(totalSeconds % 60).toString().padStart(2, "0");
+  return `${m}:${s}`;
+}
+
 function CallTile({ stream, name, avatarUrl, isVideo, muted, cameraOff, isLocal, connectionState, speaking }) {
   const videoRef = useRef(null);
 
@@ -45,8 +51,8 @@ function CallTile({ stream, name, avatarUrl, isVideo, muted, cameraOff, isLocal,
 
   return (
     <div
-      className={`relative flex aspect-video w-full items-center justify-center overflow-hidden rounded-xl bg-zinc-900 transition-shadow ${
-        showSpeakingRing ? "ring-2 ring-green-400 ring-offset-2 ring-offset-black" : ""
+      className={`relative flex aspect-video w-full items-center justify-center overflow-hidden rounded-2xl border bg-gradient-to-br from-[#1a2033] to-[#0e1220] transition-shadow ${
+        showSpeakingRing ? "border-emerald-400/70 shadow-[0_0_0_3px_rgba(52,211,153,0.25)]" : "border-white/10"
       }`}
     >
       {showVideo ? (
@@ -58,7 +64,7 @@ function CallTile({ stream, name, avatarUrl, isVideo, muted, cameraOff, isLocal,
           className="h-full w-full object-cover"
         />
       ) : (
-        <Avatar className="h-16 w-16">
+        <Avatar className="h-16 w-16 ring-2 ring-white/10">
           <Avatar.Image src={avatarUrl} alt={name} />
           <Avatar.Fallback className="text-xl">
             {getInitials(name || "?")}
@@ -78,13 +84,31 @@ function CallTile({ stream, name, avatarUrl, isVideo, muted, cameraOff, isLocal,
         </span>
       ) : null}
 
-      <div className="absolute bottom-2 left-2 flex items-center gap-1.5 rounded-full bg-black/60 px-2 py-1">
+      <div className="absolute bottom-2 left-2 flex items-center gap-1.5 rounded-full bg-black/60 px-2.5 py-1 backdrop-blur-sm">
         {muted ? <MicOffIcon className="size-3.5 text-red-400" /> : null}
         {isVideo && cameraOff ? <VideoOffIcon className="size-3.5 text-gray-300" /> : null}
-        <span className="max-w-28 truncate text-xs text-white">
+        <span className="max-w-28 truncate text-xs font-medium text-white">
           {isLocal ? "You" : name}
         </span>
       </div>
+    </div>
+  );
+}
+
+function CallControlButton({ onPress, active, label, children }) {
+  return (
+    <div className="flex flex-col items-center gap-2">
+      <Button
+        isIconOnly
+        onPress={onPress}
+        aria-label={label}
+        className={`h-12 w-12 rounded-full backdrop-blur-md ${
+          active ? "bg-red-500 text-white" : "bg-white/10 text-white hover:bg-white/20"
+        }`}
+      >
+        {children}
+      </Button>
+      <span className="text-xs text-white/60">{label}</span>
     </div>
   );
 }
@@ -106,6 +130,18 @@ export function GroupCallModal() {
   const groups = useGroupStore((state) => state.groups);
   const authUser = useAuthStore((state) => state.authUser);
 
+  const [duration, setDuration] = useState(0);
+
+  useEffect(() => {
+    if (status !== "in-call") {
+      setDuration(0);
+      return;
+    }
+
+    const timer = setInterval(() => setDuration((prev) => prev + 1), 1000);
+    return () => clearInterval(timer);
+  }, [status]);
+
   if (status === "idle") return null;
 
   const group = groups.find((g) => g._id === groupId);
@@ -115,16 +151,40 @@ export function GroupCallModal() {
   const tileCount = peerEntries.length + 1; // + local tile
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-black/95 p-4">
-      <p className="mb-4 mt-2 text-center text-lg text-white">
-        {status === "joining"
-          ? `Joining ${groupName || "call"}…`
-          : status === "reconnecting"
-          ? `Reconnecting to ${groupName || "call"}…`
-          : groupName}
-      </p>
+    <div className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-[#080b14] p-4">
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div className="absolute -top-40 left-1/2 h-96 w-96 -translate-x-1/2 rounded-full bg-[#5b6dfa]/20 blur-[120px]" />
+        <div className="absolute -bottom-40 -right-24 h-96 w-96 rounded-full bg-[#22c3a6]/15 blur-[120px]" />
+      </div>
 
-      <div className="flex flex-1 items-center justify-center overflow-y-auto">
+      <div className="relative z-10 mb-4 mt-1 flex items-center justify-between px-1 sm:px-3">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <Avatar className="h-9 w-9 shrink-0 ring-2 ring-white/10">
+            <Avatar.Fallback className="text-sm">{getInitials(groupName || "?")}</Avatar.Fallback>
+          </Avatar>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold leading-tight text-white">
+              {groupName || "Group call"}
+            </p>
+            <p className="text-xs text-white/50">{tileCount} on the call</p>
+          </div>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-2 rounded-full bg-white/8 px-3 py-1.5 backdrop-blur-md">
+          <span
+            className={`size-2 rounded-full ${
+              status === "in-call" ? "bg-emerald-400" : "animate-pulse bg-amber-400"
+            }`}
+          />
+          <span className="text-xs font-medium text-white/80">
+            {status === "joining" && "Joining…"}
+            {status === "reconnecting" && "Reconnecting…"}
+            {status === "in-call" && formatDuration(duration)}
+          </span>
+        </div>
+      </div>
+
+      <div className="relative z-10 flex flex-1 items-center justify-center overflow-y-auto">
         <div className={`grid w-full max-w-4xl gap-3 ${gridColsClass(tileCount)}`}>
           <CallTile
             stream={localStream}
@@ -156,39 +216,36 @@ export function GroupCallModal() {
         </div>
       </div>
 
-      <div className="mb-4 mt-6 flex justify-center gap-4">
-        <Button
-          isIconOnly
-          className={localMuted ? "bg-red-500 text-white" : "bg-white/15 text-white"}
+      <div className="relative z-10 mb-6 mt-6 flex items-center justify-center gap-6">
+        <CallControlButton
           onPress={toggleMute}
-          aria-label={localMuted ? "Unmute" : "Mute"}
+          active={localMuted}
+          label={localMuted ? "Unmute" : "Mute"}
         >
           {localMuted ? <MicOffIcon className="size-5" /> : <MicIcon className="size-5" />}
-        </Button>
+        </CallControlButton>
 
         {callType === "video" ? (
-          <Button
-            isIconOnly
-            className={localCameraOff ? "bg-red-500 text-white" : "bg-white/15 text-white"}
+          <CallControlButton
             onPress={toggleCamera}
-            aria-label={localCameraOff ? "Turn camera on" : "Turn camera off"}
+            active={localCameraOff}
+            label={localCameraOff ? "Start video" : "Stop video"}
           >
-            {localCameraOff ? (
-              <VideoOffIcon className="size-5" />
-            ) : (
-              <VideoIcon className="size-5" />
-            )}
-          </Button>
+            {localCameraOff ? <VideoOffIcon className="size-5" /> : <VideoIcon className="size-5" />}
+          </CallControlButton>
         ) : null}
 
-        <Button
-          isIconOnly
-          className="bg-red-500 text-white"
-          onPress={leaveCall}
-          aria-label="Leave call"
-        >
-          <PhoneOffIcon className="size-5" />
-        </Button>
+        <div className="flex flex-col items-center gap-2">
+          <Button
+            isIconOnly
+            className="h-14 w-14 rounded-full bg-red-500 text-white shadow-lg shadow-black/30 hover:bg-red-400"
+            onPress={leaveCall}
+            aria-label="Leave call"
+          >
+            <PhoneOffIcon className="size-6" />
+          </Button>
+          <span className="text-xs text-white/60">Leave</span>
+        </div>
       </div>
     </div>
   );
