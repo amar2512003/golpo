@@ -112,12 +112,14 @@ statusSchema.index({ expiresAt: 1 }, { name: "status_expiry_scan" });
 statusSchema.index({ purgeAfter: 1 }, { name: "status_purge_ttl", expireAfterSeconds: 0 });
 
 // Derive purgeAfter from expiresAt so callers only ever set one date and
-// the two can't drift apart.
-statusSchema.pre("validate", function setPurgeAfter(next) {
+// the two can't drift apart. No `next` argument: Mongoose 7+ dropped
+// callback-style middleware entirely, so a plain synchronous function is
+// all a pre hook takes now — accepting `next` here would just be
+// undefined, and calling it throws "next is not a function".
+statusSchema.pre("validate", function setPurgeAfter() {
   if (this.expiresAt) {
     this.purgeAfter = new Date(this.expiresAt.getTime() + STATUS_PURGE_GRACE_MS);
   }
-  next();
 });
 
 const Status = mongoose.model("Status", statusSchema);
