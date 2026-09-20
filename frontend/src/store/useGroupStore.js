@@ -13,6 +13,7 @@ export const MAX_GROUP_MEMBERS = 6;
 // plain socket.off("newGroupMessage") would remove *both* of these.
 let activeGroupMessageHandler = null;
 let groupConversationUpdateHandler = null;
+let activeGroupPollHandler = null;
 
 // If we're on a call for a group we just lost access to (removed, left
 // elsewhere, or the group was deleted), there's no one left we're
@@ -319,6 +320,67 @@ export const useGroupStore = create((set, get) => ({
     return get().sendGroupMessage({ imageUrl: gifUrl });
   },
 
+  // Shares the sender's current position: an OpenStreetMap static
+  // preview image (no API key needed) alongside a Google Maps link for
+  // the group to open. Rides the normal text+imageUrl message shape —
+  // no schema change needed.
+  sendGroupLocationMessage: async (groupId) => {
+    if (!groupId) return false;
+    if (!navigator.geolocation) {
+      toast.error("Location isn't available on this device");
+      return false;
+    }
+
+    const position = await new Promise((resolve) => {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => resolve(pos),
+        () => resolve(null),
+        { enableHighAccuracy: true, timeout: 10000 },
+      );
+    });
+
+    if (!position) {
+      toast.error("Couldn't get your location");
+      return false;
+    }
+
+    const { latitude, longitude } = position.coords;
+    const previewUrl = `https://staticmap.openstreetmap.de/staticmap.php?center=${latitude},${longitude}&zoom=15&size=480x260&maptype=mapnik&markers=${latitude},${longitude},red-pushpin`;
+    const mapsLink = `https://www.google.com/maps?q=${latitude},${longitude}`;
+
+    return get().sendGroupMessage({ imageUrl: previewUrl, text: `📍 My location: ${mapsLink}` });
+  },
+
+  // Polls go through as { poll } JSON — the backend validates and starts
+  // every option at zero votes.
+  sendGroupPollMessage: async (groupId, { question, options }) => {
+    if (!groupId || !question?.trim()) return false;
+    const cleanOptions = (options || []).map((option) => option.trim()).filter(Boolean);
+    if (cleanOptions.length < 2) return false;
+
+    return get().sendGroupMessage({ poll: { question: question.trim(), options: cleanOptions } });
+  },
+
+  // Single-choice: picking the option you already voted for retracts it
+  // (handled server-side); the response is the source of truth.
+  voteOnGroupPoll: async (messageId, optionIndex) => {
+    if (!messageId) return false;
+    try {
+      const res = await axiosInstance.put(`/groups/messages/${messageId}/poll/vote`, {
+        optionIndex,
+      });
+      set({
+        groupMessages: get().groupMessages.map((message) =>
+          message._id === messageId ? res.data : message,
+        ),
+      });
+      return true;
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Couldn't cast your vote");
+      return false;
+    }
+  },
+
   // Live messages for whichever group is currently open. Own messages are
   // skipped here since sendGroupMessage already appended them locally —
   // this mirrors useChatStore.subscribeToMessages' senderId filter.
@@ -356,12 +418,27 @@ export const useGroupStore = create((set, get) => ({
       get().markGroupMessagesSeen(newMessage.groupId);
     };
     socket.on("newGroupMessage", activeGroupMessageHandler);
+
+    // A poll in this group someone voted on — swap in the updated
+    // document wherever it currently sits in the open thread.
+    if (activeGroupPollHandler) socket.off("groupMessagePollUpdated", activeGroupPollHandler);
+    activeGroupPollHandler = (updatedMessage) => {
+      if (String(updatedMessage.groupId) !== String(get().activeGroupId)) return;
+      set({
+        groupMessages: get().groupMessages.map((message) =>
+          String(message._id) === String(updatedMessage._id) ? updatedMessage : message,
+        ),
+      });
+    };
+    socket.on("groupMessagePollUpdated", activeGroupPollHandler);
   },
 
   unsubscribeFromGroupMessages: () => {
     const socket = useAuthStore.getState().socket;
     if (socket && activeGroupMessageHandler) socket.off("newGroupMessage", activeGroupMessageHandler);
+    if (socket && activeGroupPollHandler) socket.off("groupMessagePollUpdated", activeGroupPollHandler);
     activeGroupMessageHandler = null;
+    activeGroupPollHandler = null;
   },
 
   // Session-wide (not tied to whichever group happens to be open) so the

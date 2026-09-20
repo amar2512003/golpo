@@ -1,8 +1,8 @@
 import { Button, TextArea } from "@heroui/react";
 import {
-  ImageIcon,
   LoaderIcon,
   MicIcon,
+  PaperclipIcon,
   SendHorizontalIcon,
   SmileIcon,
   Trash2Icon,
@@ -15,6 +15,8 @@ import { useGroupStore } from "../../store/useGroupStore";
 import { useSelectedConversation } from "../../hooks/useSelectedConversation";
 import { useTypingEmitter } from "../../hooks/useTypingEmitter";
 import { EmojiPicker } from "./EmojiPicker";
+import { AttachmentMenu } from "./AttachmentMenu";
+import { PollCreatorModal } from "./PollCreatorModal";
 
 export function ChatComposer() {
   const composerText = useChatStore((state) => state.composerText);
@@ -27,6 +29,8 @@ export function ChatComposer() {
   const sendStickerMessage = useChatStore((state) => state.sendStickerMessage);
   const sendGifMessage = useChatStore((state) => state.sendGifMessage);
   const sendVoiceMessage = useChatStore((state) => state.sendVoiceMessage);
+  const sendLocationMessage = useChatStore((state) => state.sendLocationMessage);
+  const sendPollMessage = useChatStore((state) => state.sendPollMessage);
 
   const sendGroupMediaMessage = useGroupStore((state) => state.sendGroupMediaMessage);
   const isSendingGroupMedia = useGroupStore((state) => state.isSendingGroupMedia);
@@ -34,6 +38,8 @@ export function ChatComposer() {
   const sendGroupStickerMessage = useGroupStore((state) => state.sendGroupStickerMessage);
   const sendGroupGifMessage = useGroupStore((state) => state.sendGroupGifMessage);
   const sendGroupVoiceMessage = useGroupStore((state) => state.sendGroupVoiceMessage);
+  const sendGroupLocationMessage = useGroupStore((state) => state.sendGroupLocationMessage);
+  const sendGroupPollMessage = useGroupStore((state) => state.sendGroupPollMessage);
 
   const { activeConversationId, activeConversationType } = useSelectedConversation();
   const { playRandomKeyStrokeSound } = useKeyboardSound();
@@ -42,8 +48,12 @@ export function ChatComposer() {
     isGroup: activeConversationType === "group",
   });
   const mediaInputRef = useRef(null);
+  const cameraInputRef = useRef(null);
 
   const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
+  const [isAttachmentMenuOpen, setIsAttachmentMenuOpen] = useState(false);
+  const [isPollModalOpen, setIsPollModalOpen] = useState(false);
+  const [isSendingLocation, setIsSendingLocation] = useState(false);
 
   const isGroup = activeConversationType === "group";
   const isSending = isGroup ? isSendingGroupMedia : isSendingMedia;
@@ -107,6 +117,26 @@ export function ChatComposer() {
       : await sendMediaMessage({ conversationId: activeConversationId, file });
 
     if (didSendMessage) playSoundIfEnabled();
+  };
+
+  const handleSendLocation = async () => {
+    if (!activeConversationId || isSendingLocation) return;
+    setIsSendingLocation(true);
+    const didSendMessage = isGroup
+      ? await sendGroupLocationMessage(activeConversationId)
+      : await sendLocationMessage(activeConversationId);
+    setIsSendingLocation(false);
+
+    if (didSendMessage) playSoundIfEnabled();
+  };
+
+  const handleCreatePoll = async ({ question, options }) => {
+    const didSendMessage = isGroup
+      ? await sendGroupPollMessage(activeConversationId, { question, options })
+      : await sendPollMessage(activeConversationId, { question, options });
+
+    if (didSendMessage) playSoundIfEnabled();
+    return didSendMessage;
   };
 
   // Appends the emoji to whatever's already typed.
@@ -180,22 +210,50 @@ export function ChatComposer() {
           <input
             ref={mediaInputRef}
             type="file"
-            accept="image/*,video/*"
+            accept="image/*"
             className="sr-only"
             disabled={isSending}
             tabIndex={-1}
             aria-hidden
             onChange={handleMediaPick}
           />
-          <Button
-            variant="ghost"
-            isIconOnly
-            isDisabled={isSending}
-            className="size-9 shrink-0 touch-manipulation self-end text-accent"
-            onPress={() => mediaInputRef.current?.click()}
-          >
-            <ImageIcon className="size-5 sm:size-6" strokeWidth={2} />
-          </Button>
+          <input
+            ref={cameraInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="sr-only"
+            disabled={isSending}
+            tabIndex={-1}
+            aria-hidden
+            onChange={handleMediaPick}
+          />
+          <div className="relative shrink-0 self-end">
+            {isAttachmentMenuOpen ? (
+              <AttachmentMenu
+                onClose={() => setIsAttachmentMenuOpen(false)}
+                onPhoto={() => mediaInputRef.current?.click()}
+                onCamera={() => cameraInputRef.current?.click()}
+                onLocation={handleSendLocation}
+                onPoll={() => setIsPollModalOpen(true)}
+              />
+            ) : null}
+            <Button
+              variant="ghost"
+              isIconOnly
+              isDisabled={isSending || isSendingLocation}
+              aria-pressed={isAttachmentMenuOpen}
+              aria-label="Add attachment"
+              className="size-9 shrink-0 touch-manipulation text-accent"
+              onPress={() => setIsAttachmentMenuOpen((open) => !open)}
+            >
+              {isSendingLocation ? (
+                <LoaderIcon className="size-5 animate-spin sm:size-6" strokeWidth={2} aria-hidden />
+              ) : (
+                <PaperclipIcon className="size-5 sm:size-6" strokeWidth={2} aria-hidden />
+              )}
+            </Button>
+          </div>
 
           <div className="relative shrink-0 self-end">
             {isEmojiPickerOpen ? (
@@ -215,7 +273,7 @@ export function ChatComposer() {
               className="size-9 touch-manipulation text-accent"
               onPress={() => setIsEmojiPickerOpen((open) => !open)}
             >
-              <SmileIcon className="size-5 sm:size-6" strokeWidth={2} />
+              <SmileIcon className="size-5 sm:size-6" strokeWidth={2} aria-hidden />
             </Button>
           </div>
 
@@ -252,6 +310,9 @@ export function ChatComposer() {
           )}
         </div>
       )}
+      {isPollModalOpen ? (
+        <PollCreatorModal onClose={() => setIsPollModalOpen(false)} onCreate={handleCreatePoll} />
+      ) : null}
     </footer>
   );
 }

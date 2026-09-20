@@ -8,6 +8,28 @@ function escapeRegex(str) {
   return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+// Validates a poll payload from the client and normalizes it into the
+// shape the schema expects (question + 2-10 options, each starting with
+// no votes). Returns null if the payload isn't usable.
+function normalizePoll(poll) {
+  if (!poll || typeof poll !== "object") return null;
+
+  const question = (poll.question || "").trim();
+  const options = Array.isArray(poll.options)
+    ? poll.options
+        .map((option) => (typeof option === "string" ? option : option?.text))
+        .map((text) => (text || "").trim())
+        .filter(Boolean)
+    : [];
+
+  if (!question || options.length < 2 || options.length > 10) return null;
+
+  return {
+    question,
+    options: options.map((text) => ({ text, votes: [] })),
+  };
+}
+
 // Privacy: there's no "browse everyone" endpoint any more. You can only
 // find someone if you already know their exact email — this is an exact,
 // case-insensitive match, not a partial/fuzzy search, so typing a few
@@ -195,7 +217,7 @@ export async function markMessagesSeen(req, res) {
 
 export async function sendMessage(req, res) {
   try {
-    const { text, imageUrl: providedImageUrl } = req.body;
+    const { text, imageUrl: providedImageUrl, poll: providedPoll } = req.body;
     const { id: receiverId } = req.params;
     const senderId = req.user._id;
 
@@ -223,6 +245,14 @@ export async function sendMessage(req, res) {
       } else imageUrl = url;
     }
 
+    let poll;
+    if (providedPoll) {
+      poll = normalizePoll(providedPoll);
+      if (!poll) {
+        return res.status(400).json({ message: "A poll needs a question and at least 2 options" });
+      }
+    }
+
     const newMessage = new Message({
       senderId,
       receiverId,
@@ -231,6 +261,7 @@ export async function sendMessage(req, res) {
       video: videoUrl,
       audio: audioUrl,
       audioDuration,
+      poll,
     });
 
     await newMessage.save();
@@ -244,6 +275,63 @@ export async function sendMessage(req, res) {
     res.status(201).json(newMessage);
   } catch (error) {
     console.error("Error in sendMessage:", error.message);
+    res.status(500).json({ message: "Internal server error" });
+  }
+}
+
+// Casts (or retracts) a vote on a DM poll message. Single-choice: picking
+// an option clears any other option the same user had voted for; picking
+// the option you already voted for un-votes it. Only the two people on
+// the conversation the poll belongs to can vote on it.
+export async function voteOnPoll(req, res) {
+  try {
+    const { id: messageId } = req.params;
+    const { optionIndex } = req.body;
+    const userId = req.user._id;
+
+    const message = await Message.findById(messageId);
+
+    if (!message || !message.poll) {
+      return res.status(404).json({ message: "Poll not found" });
+    }
+
+    if (
+      String(message.senderId) !== String(userId) &&
+      String(message.receiverId) !== String(userId)
+    ) {
+      return res.status(403).json({ message: "Not part of this conversation" });
+    }
+
+    const options = message.poll.options;
+    if (
+      typeof optionIndex !== "number" ||
+      optionIndex < 0 ||
+      optionIndex >= options.length
+    ) {
+      return res.status(400).json({ message: "Invalid poll option" });
+    }
+
+    const alreadyVotedHere = options[optionIndex].votes.some(
+      (voterId) => String(voterId) === String(userId),
+    );
+
+    options.forEach((option) => {
+      option.votes = option.votes.filter((voterId) => String(voterId) !== String(userId));
+    });
+    if (!alreadyVotedHere) options[optionIndex].votes.push(userId);
+
+    await message.save();
+
+    const otherUserId =
+      String(message.senderId) === String(userId) ? message.receiverId : message.senderId;
+    const otherSocketId = getReceiverSocketId(otherUserId);
+    if (otherSocketId) {
+      io.to(otherSocketId).emit("messagePollUpdated", message);
+    }
+
+    res.status(200).json(message);
+  } catch (error) {
+    console.error("Error in voteOnPoll:", error.message);
     res.status(500).json({ message: "Internal server error" });
   }
 }

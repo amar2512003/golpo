@@ -14,6 +14,28 @@ function isAdmin(group, userId) {
   return group.admin.toString() === userId.toString();
 }
 
+// Validates a poll payload from the client and normalizes it into the
+// shape the schema expects (question + 2-10 options, each starting with
+// no votes). Returns null if the payload isn't usable.
+function normalizePoll(poll) {
+  if (!poll || typeof poll !== "object") return null;
+
+  const question = (poll.question || "").trim();
+  const options = Array.isArray(poll.options)
+    ? poll.options
+        .map((option) => (typeof option === "string" ? option : option?.text))
+        .map((text) => (text || "").trim())
+        .filter(Boolean)
+    : [];
+
+  if (!question || options.length < 2 || options.length > 10) return null;
+
+  return {
+    question,
+    options: options.map((text) => ({ text, votes: [] })),
+  };
+}
+
 export async function createGroup(req, res) {
   try {
     const { name, memberIds = [] } = req.body;
@@ -301,7 +323,7 @@ export async function markGroupMessagesSeen(req, res) {
 export async function sendGroupMessage(req, res) {
   try {
     const { groupId } = req.params;
-    const { text, imageUrl: providedImageUrl } = req.body;
+    const { text, imageUrl: providedImageUrl, poll: providedPoll } = req.body;
     const senderId = req.user._id;
 
     const group = await Group.findById(groupId);
@@ -338,6 +360,14 @@ export async function sendGroupMessage(req, res) {
       } else imageUrl = url;
     }
 
+    let poll;
+    if (providedPoll) {
+      poll = normalizePoll(providedPoll);
+      if (!poll) {
+        return res.status(400).json({ message: "A poll needs a question and at least 2 options" });
+      }
+    }
+
     const newMessage = await GroupMessage.create({
       groupId,
       senderId,
@@ -346,6 +376,7 @@ export async function sendGroupMessage(req, res) {
       video: videoUrl,
       audio: audioUrl,
       audioDuration,
+      poll,
     });
 
     const populatedMessage = await newMessage.populate("senderId", "-clerkId");
@@ -355,6 +386,58 @@ export async function sendGroupMessage(req, res) {
     res.status(201).json(populatedMessage);
   } catch (error) {
     console.error("Error in sendGroupMessage:", error.message);
+    res.status(500).json({ message: "Internal server error" });
+  }
+}
+
+// Casts (or retracts) a vote on a group poll message. Single-choice:
+// picking an option clears any other option the same user had voted for;
+// picking the option you already voted for un-votes it. Only current
+// group members can vote.
+export async function voteOnGroupPoll(req, res) {
+  try {
+    const { messageId } = req.params;
+    const { optionIndex } = req.body;
+    const userId = req.user._id;
+
+    const message = await GroupMessage.findById(messageId);
+
+    if (!message || !message.poll) {
+      return res.status(404).json({ message: "Poll not found" });
+    }
+
+    const group = await Group.findById(message.groupId);
+    if (!group || !isMember(group, userId)) {
+      return res.status(403).json({ message: "Not a member of this group" });
+    }
+
+    const options = message.poll.options;
+    if (
+      typeof optionIndex !== "number" ||
+      optionIndex < 0 ||
+      optionIndex >= options.length
+    ) {
+      return res.status(400).json({ message: "Invalid poll option" });
+    }
+
+    const alreadyVotedHere = options[optionIndex].votes.some(
+      (voterId) => String(voterId) === String(userId),
+    );
+
+    options.forEach((option) => {
+      option.votes = option.votes.filter((voterId) => String(voterId) !== String(userId));
+    });
+    if (!alreadyVotedHere) options[optionIndex].votes.push(userId);
+
+    await message.save();
+
+    const populatedMessage = await message.populate("senderId", "-clerkId");
+
+    io.to(String(message.groupId)).emit("groupMessagePollUpdated", populatedMessage);
+
+    res.status(200).json(populatedMessage);
+  } catch (error) {
+    console.error("Error in voteOnGroupPoll:", error.message);
     res.status(500).json({ message: "Internal server error" });
   }
 }

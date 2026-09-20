@@ -6,6 +6,7 @@ import {
   markMessagesSeen,
   searchUserByEmail,
   sendMessage,
+  voteOnPoll,
 } from "../controllers/message.controller.js";
 import { protectRoute } from "../middleware/auth.middleware.js";
 import { upload } from "../middleware/upload.middleware.js";
@@ -22,5 +23,6 @@ router.get("/conversations", getConversationsForSidebar);
 router.get("/:id", getMessages);
 router.put("/seen/:id", markMessagesSeen);
 router.post("/send/:id", upload.single("media"), sendMessage);
+router.put("/:id/poll/vote", voteOnPoll);
 
 export default router;

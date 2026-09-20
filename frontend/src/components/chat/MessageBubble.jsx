@@ -1,7 +1,9 @@
 import { CheckCheck } from "lucide-react";
 import { withTransform } from "../../lib/imagekit";
+import { splitTextWithLinks } from "../../lib/utils";
 import { MessageVideo } from "./MessageVideo";
 import { VoiceMessagePlayer } from "./VoiceMessagePlayer";
+import { PollBubble } from "./PollBubble";
 
 // Compress + size images for the bubble (q-auto works for images; f-auto picks WebP/AVIF).
 const IMAGE_TRANSFORM = "q-auto,w-640,f-auto";
@@ -12,13 +14,45 @@ const IMAGE_TRANSFORM = "q-auto,w-640,f-auto";
 const STICKER_TEXT_REGEX =
   /^(?:\p{Extended_Pictographic}(?:\uFE0F|\u200D\p{Extended_Pictographic})*){1,3}$/u;
 
-export function MessageBubble({ message }) {
+// Renders message text with bare URLs (e.g. the Google Maps link in a
+// shared location) turned into tappable links instead of dead text.
+function MessageText({ text, isOwnMessage }) {
+  const segments = splitTextWithLinks(text);
+  return (
+    <p className="whitespace-pre-wrap wrap-break-word">
+      {segments.map((segment, index) =>
+        typeof segment === "string" ? (
+          <span key={index}>{segment}</span>
+        ) : (
+          <a
+            key={index}
+            href={segment.href}
+            target="_blank"
+            rel="noreferrer noopener"
+            className={`underline underline-offset-2 ${
+              isOwnMessage ? "text-accent-foreground" : "text-accent"
+            }`}
+          >
+            {segment.label}
+          </a>
+        ),
+      )}
+    </p>
+  );
+}
+
+export function MessageBubble({ message, isGroup }) {
   const isOwnMessage = message.role === "me";
   const hasImage = Boolean(message.imageUrl);
   const hasVideo = Boolean(message.videoUrl);
   const hasAudio = Boolean(message.audioUrl);
+  const hasPoll = Boolean(message.poll);
   const isSticker =
-    !hasImage && !hasVideo && !hasAudio && STICKER_TEXT_REGEX.test((message.text || "").trim());
+    !hasImage &&
+    !hasVideo &&
+    !hasAudio &&
+    !hasPoll &&
+    STICKER_TEXT_REGEX.test((message.text || "").trim());
   // `seen` only exists on DM messages (group messages don't track it),
   // so ticks are scoped to 1:1 chats for free.
   const showReceipt = isOwnMessage && typeof message.seen === "boolean";
@@ -78,9 +112,15 @@ export function MessageBubble({ message }) {
             isOwnMessage={isOwnMessage}
           />
         ) : null}
-        {message.text ? (
-          <p className="whitespace-pre-wrap wrap-break-word">{message.text}</p>
+        {hasPoll ? (
+          <PollBubble
+            messageId={message.id}
+            poll={message.poll}
+            isGroup={isGroup}
+            isOwnMessage={isOwnMessage}
+          />
         ) : null}
+        {message.text ? <MessageText text={message.text} isOwnMessage={isOwnMessage} /> : null}
         <p
           className={`mt-1 flex items-center gap-1 text-[11px] tabular-nums ${
             isOwnMessage ? "justify-end text-accent-foreground/75" : "text-muted"

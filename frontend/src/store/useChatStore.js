@@ -14,6 +14,7 @@ import toast from "react-hot-toast";
 let conversationUpdateHandler = null;
 let activeDmMessageHandler = null;
 let activeDmSeenHandler = null;
+let activeDmPollHandler = null;
 
 export const useChatStore = create(
   persist(
@@ -203,14 +204,28 @@ export const useChatStore = create(
           });
         };
         socket.on("messagesSeen", activeDmSeenHandler);
+
+        // A poll the other person voted on — swap in the updated
+        // document wherever it currently sits in the open thread.
+        if (activeDmPollHandler) socket.off("messagePollUpdated", activeDmPollHandler);
+        activeDmPollHandler = (updatedMessage) => {
+          set({
+            messages: get().messages.map((message) =>
+              String(message._id) === String(updatedMessage._id) ? updatedMessage : message,
+            ),
+          });
+        };
+        socket.on("messagePollUpdated", activeDmPollHandler);
       },
 
       unsubscribeFromMessages: () => {
         const socket = useAuthStore.getState().socket;
         if (socket && activeDmMessageHandler) socket.off("newMessage", activeDmMessageHandler);
         if (socket && activeDmSeenHandler) socket.off("messagesSeen", activeDmSeenHandler);
+        if (socket && activeDmPollHandler) socket.off("messagePollUpdated", activeDmPollHandler);
         activeDmMessageHandler = null;
         activeDmSeenHandler = null;
+        activeDmPollHandler = null;
       },
 
       // Session-wide (not tied to whichever DM happens to be open) so the
@@ -318,6 +333,65 @@ export const useChatStore = create(
       sendGifMessage: async (conversationId, gifUrl) => {
         if (!conversationId || !gifUrl) return false;
         return get().sendMessage({ imageUrl: gifUrl });
+      },
+
+      // Shares the sender's current position: an OpenStreetMap static
+      // preview image (no API key needed) alongside a Google Maps link
+      // for the receiver to open. Rides the normal text+imageUrl message
+      // shape — no schema change needed.
+      sendLocationMessage: async (conversationId) => {
+        if (!conversationId) return false;
+        if (!navigator.geolocation) {
+          toast.error("Location isn't available on this device");
+          return false;
+        }
+
+        const position = await new Promise((resolve) => {
+          navigator.geolocation.getCurrentPosition(
+            (pos) => resolve(pos),
+            () => resolve(null),
+            { enableHighAccuracy: true, timeout: 10000 },
+          );
+        });
+
+        if (!position) {
+          toast.error("Couldn't get your location");
+          return false;
+        }
+
+        const { latitude, longitude } = position.coords;
+        const previewUrl = `https://staticmap.openstreetmap.de/staticmap.php?center=${latitude},${longitude}&zoom=15&size=480x260&maptype=mapnik&markers=${latitude},${longitude},red-pushpin`;
+        const mapsLink = `https://www.google.com/maps?q=${latitude},${longitude}`;
+
+        return get().sendMessage({ imageUrl: previewUrl, text: `📍 My location: ${mapsLink}` });
+      },
+
+      // Polls go through as { poll } JSON — the backend validates and
+      // starts every option at zero votes.
+      sendPollMessage: async (conversationId, { question, options }) => {
+        if (!conversationId || !question?.trim()) return false;
+        const cleanOptions = (options || []).map((option) => option.trim()).filter(Boolean);
+        if (cleanOptions.length < 2) return false;
+
+        return get().sendMessage({ poll: { question: question.trim(), options: cleanOptions } });
+      },
+
+      // Single-choice: picking the option you already voted for retracts
+      // it (handled server-side); the response is the source of truth.
+      voteOnPoll: async (messageId, optionIndex) => {
+        if (!messageId) return false;
+        try {
+          const res = await axiosInstance.put(`/messages/${messageId}/poll/vote`, { optionIndex });
+          set({
+            messages: get().messages.map((message) =>
+              message._id === messageId ? res.data : message,
+            ),
+          });
+          return true;
+        } catch (error) {
+          toast.error(error.response?.data?.message || "Couldn't cast your vote");
+          return false;
+        }
       },
     }),
     {

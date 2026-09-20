@@ -30,6 +30,18 @@ const messageSchema = new mongoose.Schema(
     audioDuration: {
       type: Number,
     },
+    // Polls: a question plus 2+ options, each tracking which users voted
+    // for it. Single-choice — voting for a new option clears any previous
+    // vote by the same user (enforced in the controller, not the schema).
+    poll: {
+      question: { type: String },
+      options: [
+        {
+          text: { type: String },
+          votes: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
+        },
+      ],
+    },
     seen: {
       type: Boolean,
       default: false,

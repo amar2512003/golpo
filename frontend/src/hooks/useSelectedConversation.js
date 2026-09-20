@@ -30,6 +30,7 @@ function mapUserToConversation({ user, messages, authUser, onlineUsers }) {
     videoUrl: message.video,
     audioUrl: message.audio,
     audioDuration: message.audioDuration,
+    poll: message.poll,
     seen: message.seen,
   }));
 
@@ -67,6 +68,7 @@ function mapGroupToConversation({ group, messages, authUser }) {
       videoUrl: message.video,
       audioUrl: message.audio,
       audioDuration: message.audioDuration,
+      poll: message.poll,
       senderName: isMe ? null : message.senderId?.fullName,
     };
   });

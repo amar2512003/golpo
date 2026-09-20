@@ -98,7 +98,7 @@ export function MessageList() {
                 {group.label}
               </p>
               {group.messages.map((message) => (
-                <MessageBubble key={message.id} message={message} />
+                <MessageBubble key={message.id} message={message} isGroup={isGroup} />
               ))}
             </div>
           ))}

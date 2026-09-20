@@ -71,9 +71,30 @@ export function formatSidebarTime(date) {
 // backend) into the one-line snippet shown under the name in the sidebar.
 export function formatLastMessagePreview(lastMessage) {
   if (!lastMessage) return "";
+  if (lastMessage.poll) return "📊 Poll";
   if (lastMessage.image) return "📷 Photo";
   if (lastMessage.video) return "📹 Video";
   if (lastMessage.audio) return "🎤 Voice message";
   if (lastMessage.text) return lastMessage.text;
   return "";
+}
+
+// A single, non-global instance for testing individual segments — split()
+// below uses its own (global, capturing) copy so the two never share
+// mutable lastIndex state.
+const IS_URL = /^https?:\/\/[^\s]+$/;
+
+// Splits message text into plain-text and URL segments so bare links
+// (e.g. the Google Maps link in a shared location) render as tappable
+// anchors instead of dead text. Returns an array of strings and
+// { type: "link", href, label } objects for the caller to render.
+export function splitTextWithLinks(text) {
+  if (!text) return [];
+
+  // A capturing group in split() keeps the matched delimiters in the
+  // result, alternating plain text and URL segments.
+  const parts = text.split(/(https?:\/\/[^\s]+)/g);
+  return parts.filter(Boolean).map((part) =>
+    IS_URL.test(part) ? { type: "link", href: part, label: part } : part,
+  );
 }
