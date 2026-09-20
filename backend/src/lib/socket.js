@@ -319,34 +319,6 @@ io.on("connection", (socket) => {
     }
   );
 
-  // ---------------- Typing indicators ----------------
-  //
-  // Purely ephemeral: nothing is stored, the event is just relayed. For a
-  // DM it goes to every live socket of the other person (so a second tab
-  // or device shows it too); for a group it goes to everyone else in the
-  // group's room. The sender re-emits while they keep typing and the
-  // client also expires stale entries, so a dropped "stop" is harmless.
-  socket.on("typing", ({ toUserId, groupId, isTyping }) => {
-    if (!userId) return;
-
-    const payload = { fromUserId: userId.toString(), isTyping: !!isTyping };
-
-    if (groupId) {
-      const roomId = String(groupId);
-      // Only sockets that are actually in the group's room can broadcast to it.
-      if (!socket.rooms.has(roomId)) return;
-
-      socket.to(roomId).emit("typing", { ...payload, groupId: roomId });
-      return;
-    }
-
-    if (!toUserId || String(toUserId) === userId.toString()) return;
-
-    userSocketMap[toUserId]?.forEach((targetSocketId) => {
-      io.to(targetSocketId).emit("typing", payload);
-    });
-  });
-
   // ---------------- Group Call Signaling (mesh) ----------------
   //
   // Group calls layer on top of 1:1 signaling: call:offer/answer/

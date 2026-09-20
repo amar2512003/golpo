@@ -21,14 +21,7 @@ async function giphyRequest(endpoint, params) {
   const { data } = await res.json();
   return data.map((gif) => ({
     id: gif.id,
-    // fixed_width is 200px wide — sharp enough for the picker's one-per-row
-    // layout (the "_small" rendition is only 100px and looks blurry there).
-    previewUrl:
-      gif.images.fixed_width?.url ||
-      gif.images.fixed_width_small?.url ||
-      gif.images.fixed_height_small?.url,
-    previewWidth: Number(gif.images.fixed_width?.width) || 200,
-    previewHeight: Number(gif.images.fixed_width?.height) || 150,
+    previewUrl: gif.images.fixed_width_small?.url || gif.images.fixed_height_small?.url,
     fullUrl: gif.images.original?.url || gif.images.fixed_height?.url,
     title: gif.title || "GIF",
   }));

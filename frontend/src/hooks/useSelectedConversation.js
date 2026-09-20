@@ -20,19 +20,23 @@ export function getInitials(name) {
 // 2. User → peer
 
 function mapUserToConversation({ user, messages, authUser, onlineUsers }) {
-  const mappedMessages = messages.map((message) => ({
-    id: message._id,
-    role: String(message.senderId) === String(authUser?._id) ? "me" : "them",
-    text: message.text || "",
-    time: formatMessageTime(message.createdAt),
-    createdAt: message.createdAt,
-    imageUrl: message.image,
-    videoUrl: message.video,
-    audioUrl: message.audio,
-    audioDuration: message.audioDuration,
-    poll: message.poll,
-    seen: message.seen,
-  }));
+  const mappedMessages = messages.map((message) => {
+    const isMe = String(message.senderId) === String(authUser?._id);
+    const sender = isMe ? authUser : user;
+
+    return {
+      id: message._id,
+      role: isMe ? "me" : "them",
+      text: message.text || "",
+      time: formatMessageTime(message.createdAt),
+      createdAt: message.createdAt,
+      imageUrl: message.image,
+      videoUrl: message.video,
+      seen: message.seen,
+      senderAvatarUrl: sender?.profilePic,
+      senderFullName: sender?.fullName,
+    };
+  });
 
   return {
     id: user._id,
@@ -66,10 +70,9 @@ function mapGroupToConversation({ group, messages, authUser }) {
       createdAt: message.createdAt,
       imageUrl: message.image,
       videoUrl: message.video,
-      audioUrl: message.audio,
-      audioDuration: message.audioDuration,
-      poll: message.poll,
       senderName: isMe ? null : message.senderId?.fullName,
+      senderAvatarUrl: isMe ? authUser?.profilePic : message.senderId?.profilePic,
+      senderFullName: isMe ? authUser?.fullName : message.senderId?.fullName,
     };
   });
 

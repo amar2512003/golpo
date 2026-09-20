@@ -2,32 +2,9 @@ import User from "../models/user.model.js";
 import Message from "../models/message.model.js";
 import { hasImageKitConfig, uploadChatMedia } from "../lib/imagekit.js";
 import { getReceiverSocketId, io } from "../lib/socket.js";
-import { parseAudioDuration } from "../lib/voice.js";
 
 function escapeRegex(str) {
   return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-// Validates a poll payload from the client and normalizes it into the
-// shape the schema expects (question + 2-10 options, each starting with
-// no votes). Returns null if the payload isn't usable.
-function normalizePoll(poll) {
-  if (!poll || typeof poll !== "object") return null;
-
-  const question = (poll.question || "").trim();
-  const options = Array.isArray(poll.options)
-    ? poll.options
-        .map((option) => (typeof option === "string" ? option : option?.text))
-        .map((text) => (text || "").trim())
-        .filter(Boolean)
-    : [];
-
-  if (!question || options.length < 2 || options.length > 10) return null;
-
-  return {
-    question,
-    options: options.map((text) => ({ text, votes: [] })),
-  };
 }
 
 // Privacy: there's no "browse everyone" endpoint any more. You can only
@@ -92,71 +69,26 @@ export async function getConversationsForSidebar(req, res) {
     const conversations = await Message.aggregate([
       // 1. Keep only the messages I sent or received.
       { $match: { $or: [{ senderId: loggedInUserId }, { receiverId: loggedInUserId }] } },
-      // 2. Sort oldest-first so the $last accumulators below land on the
-      // actual most recent message once grouped.
-      { $sort: { createdAt: 1 } },
-      // 3. Collapse them into one row per chat partner: our latest message
-      // time, a preview of that last message, and how many of the
-      // partner's messages to me are still unseen.
+      // 2. Collapse them into one row per chat partner, noting our latest message time.
       {
         $group: {
           // The partner is the other person on the message (not me).
           _id: { $cond: [{ $eq: ["$senderId", loggedInUserId] }, "$receiverId", "$senderId"] },
           lastMessageAt: { $max: "$createdAt" },
-          lastMessageText: { $last: "$text" },
-          lastMessageImage: { $last: "$image" },
-          lastMessageVideo: { $last: "$video" },
-          lastMessageAudio: { $last: "$audio" },
-          lastMessageSenderId: { $last: "$senderId" },
-          unreadCount: {
-            $sum: {
-              $cond: [
-                {
-                  $and: [
-                    { $eq: ["$receiverId", loggedInUserId] },
-                    { $eq: ["$seen", false] },
-                  ],
-                },
-                1,
-                0,
-              ],
-            },
-          },
         },
       },
-      // 4. Put the most recent conversation at the top.
+      // 3. Put the most recent conversation at the top.
       { $sort: { lastMessageAt: -1 } },
-      // 5. Look up each partner's user profile (comes back as an array).
+      // 4. Look up each partner's user profile (comes back as an array).
       { $lookup: { from: "users", localField: "_id", foreignField: "_id", as: "user" } },
-      // 6. Drop any conversation whose partner account no longer exists —
+      // 5. Drop any conversation whose partner account no longer exists —
       // $replaceRoot below needs a real document, and without this a
       // single deleted account would throw and blank out every
       // conversation for this user, not just that one.
       { $match: { user: { $ne: [] } } },
-      // 7. Pull that profile out of the array and make it the document,
-      // keeping the last-message time and preview on it so the sidebar can
-      // interleave DMs with group chats by recency and show a snippet.
-      {
-        $replaceRoot: {
-          newRoot: {
-            $mergeObjects: [
-              { $first: "$user" },
-              {
-                lastMessageAt: "$lastMessageAt",
-                unreadCount: "$unreadCount",
-                lastMessage: {
-                  text: "$lastMessageText",
-                  image: "$lastMessageImage",
-                  video: "$lastMessageVideo",
-                  audio: "$lastMessageAudio",
-                  senderId: "$lastMessageSenderId",
-                },
-              },
-            ],
-          },
-        },
-      },
-      // 8. Hide the private clerkId field from the result.
+      // 6. Pull that profile out of the array and make it the document.
+      { $replaceRoot: { newRoot: { $first: "$user" } } },
+      // 7. Hide the private clerkId field from the result.
       { $project: { clerkId: 0 } },
     ]);
 
@@ -217,7 +149,7 @@ export async function markMessagesSeen(req, res) {
 
 export async function sendMessage(req, res) {
   try {
-    const { text, imageUrl: providedImageUrl, poll: providedPoll } = req.body;
+    const { text, imageUrl: providedImageUrl } = req.body;
     const { id: receiverId } = req.params;
     const senderId = req.user._id;
 
@@ -229,8 +161,6 @@ export async function sendMessage(req, res) {
         ? providedImageUrl
         : undefined;
     let videoUrl;
-    let audioUrl;
-    let audioDuration;
 
     if (req.file) {
       if (!hasImageKitConfig()) {
@@ -239,18 +169,7 @@ export async function sendMessage(req, res) {
 
       const url = await uploadChatMedia(req.file);
       if (req.file.mimetype.startsWith("video/")) videoUrl = url;
-      else if (req.file.mimetype.startsWith("audio/")) {
-        audioUrl = url;
-        audioDuration = parseAudioDuration(req.body.audioDuration);
-      } else imageUrl = url;
-    }
-
-    let poll;
-    if (providedPoll) {
-      poll = normalizePoll(providedPoll);
-      if (!poll) {
-        return res.status(400).json({ message: "A poll needs a question and at least 2 options" });
-      }
+      else imageUrl = url;
     }
 
     const newMessage = new Message({
@@ -259,9 +178,6 @@ export async function sendMessage(req, res) {
       text,
       image: imageUrl,
       video: videoUrl,
-      audio: audioUrl,
-      audioDuration,
-      poll,
     });
 
     await newMessage.save();
@@ -275,63 +191,6 @@ export async function sendMessage(req, res) {
     res.status(201).json(newMessage);
   } catch (error) {
     console.error("Error in sendMessage:", error.message);
-    res.status(500).json({ message: "Internal server error" });
-  }
-}
-
-// Casts (or retracts) a vote on a DM poll message. Single-choice: picking
-// an option clears any other option the same user had voted for; picking
-// the option you already voted for un-votes it. Only the two people on
-// the conversation the poll belongs to can vote on it.
-export async function voteOnPoll(req, res) {
-  try {
-    const { id: messageId } = req.params;
-    const { optionIndex } = req.body;
-    const userId = req.user._id;
-
-    const message = await Message.findById(messageId);
-
-    if (!message || !message.poll) {
-      return res.status(404).json({ message: "Poll not found" });
-    }
-
-    if (
-      String(message.senderId) !== String(userId) &&
-      String(message.receiverId) !== String(userId)
-    ) {
-      return res.status(403).json({ message: "Not part of this conversation" });
-    }
-
-    const options = message.poll.options;
-    if (
-      typeof optionIndex !== "number" ||
-      optionIndex < 0 ||
-      optionIndex >= options.length
-    ) {
-      return res.status(400).json({ message: "Invalid poll option" });
-    }
-
-    const alreadyVotedHere = options[optionIndex].votes.some(
-      (voterId) => String(voterId) === String(userId),
-    );
-
-    options.forEach((option) => {
-      option.votes = option.votes.filter((voterId) => String(voterId) !== String(userId));
-    });
-    if (!alreadyVotedHere) options[optionIndex].votes.push(userId);
-
-    await message.save();
-
-    const otherUserId =
-      String(message.senderId) === String(userId) ? message.receiverId : message.senderId;
-    const otherSocketId = getReceiverSocketId(otherUserId);
-    if (otherSocketId) {
-      io.to(otherSocketId).emit("messagePollUpdated", message);
-    }
-
-    res.status(200).json(message);
-  } catch (error) {
-    console.error("Error in voteOnPoll:", error.message);
     res.status(500).json({ message: "Internal server error" });
   }
 }

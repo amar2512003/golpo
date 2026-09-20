@@ -1,12 +1,5 @@
-import { useEffect } from "react";
 import useScrollToBottom from "../../hooks/useScrollToBottom";
 import { MessageBubble } from "./MessageBubble";
-import { TypingIndicator } from "./TypingIndicator";
-import {
-  getDmTypingKey,
-  getGroupTypingKey,
-  useTypingStore,
-} from "../../store/useTypingStore";
 import { NoConversationPlaceholder } from "./NoConversationPlaceholder";
 import { useSelectedConversation } from "../../hooks/useSelectedConversation";
 import { formatMessageDate, getDayKey } from "../../lib/utils";
@@ -34,54 +27,11 @@ function groupMessagesByDay(messages) {
   return groups;
 }
 
-const NO_TYPERS = [];
-
-// "Rafi is typing" / "Rafi and Mim are typing" / "3 people are typing"
-function formatTypingLabel(names) {
-  if (names.length === 1) return `${names[0]} is typing`;
-  if (names.length === 2) return `${names[0]} and ${names[1]} are typing`;
-  return `${names.length} people are typing`;
-}
-
 export function MessageList() {
-  const { activeConversation, activeConversationId, activeConversationType } =
-    useSelectedConversation();
+  const { activeConversation, activeConversationId } = useSelectedConversation();
 
   const lastMessageId = activeConversation?.messages.at(-1)?.id;
   const messagesScrollRef = useScrollToBottom(activeConversationId, lastMessageId);
-
-  const isGroup = activeConversationType === "group";
-  const typingKey = activeConversationId
-    ? isGroup
-      ? getGroupTypingKey(activeConversationId)
-      : getDmTypingKey(activeConversationId)
-    : null;
-  const typingUserIds = useTypingStore((state) => state.typing[typingKey]) ?? NO_TYPERS;
-
-  // In a DM the typer is always the peer; in a group, look up each typer's
-  // first name from the member list (anyone no longer a member is skipped).
-  const typingNames = isGroup
-    ? typingUserIds
-        .map((id) => activeConversation?.members?.find((member) => String(member._id) === id))
-        .filter(Boolean)
-        .map((member) => member.fullName.split(" ")[0])
-    : typingUserIds.length > 0 && activeConversation
-      ? [activeConversation.peer.name]
-      : [];
-  const isSomeoneTyping = typingNames.length > 0;
-
-  // Bring the indicator into view when it appears — but only if the reader
-  // is already near the bottom, so it never yanks them out of old messages.
-  useEffect(() => {
-    const scrollEl = messagesScrollRef.current;
-    if (!isSomeoneTyping || !scrollEl) return;
-
-    const distanceFromBottom =
-      scrollEl.scrollHeight - scrollEl.scrollTop - scrollEl.clientHeight;
-    if (distanceFromBottom < 160) {
-      scrollEl.scrollTo({ top: scrollEl.scrollHeight, behavior: "smooth" });
-    }
-  }, [isSomeoneTyping, messagesScrollRef]);
 
   const dayGroups = activeConversation ? groupMessagesByDay(activeConversation.messages) : [];
 
@@ -98,16 +48,10 @@ export function MessageList() {
                 {group.label}
               </p>
               {group.messages.map((message) => (
-                <MessageBubble key={message.id} message={message} isGroup={isGroup} />
+                <MessageBubble key={message.id} message={message} />
               ))}
             </div>
           ))}
-          <TypingIndicator
-            key={activeConversationId}
-            isVisible={isSomeoneTyping}
-            label={isSomeoneTyping ? formatTypingLabel(typingNames) : ""}
-            showLabel={isGroup}
-          />
         </div>
       ) : (
         <NoConversationPlaceholder />

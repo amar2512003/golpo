@@ -9,12 +9,10 @@ import {
   joinGroupByInvite,
   leaveGroup,
   makeAdmin,
-  markGroupMessagesSeen,
   regenerateInviteCode,
   removeMember,
   sendGroupMessage,
   updateGroup,
-  voteOnGroupPoll,
 } from "../controllers/group.controller.js";
 import { protectRoute } from "../middleware/auth.middleware.js";
 import { upload } from "../middleware/upload.middleware.js";
@@ -32,8 +30,6 @@ router.get("/invite/:inviteCode", getGroupInvitePreview);
 router.post("/invite/:inviteCode/join", joinGroupByInvite);
 
 router.get("/:groupId/messages", getGroupMessages);
-router.put("/messages/:messageId/poll/vote", voteOnGroupPoll);
-router.put("/:groupId/seen", markGroupMessagesSeen);
 router.post("/:groupId/messages", upload.single("media"), sendGroupMessage);
 router.patch("/:groupId", upload.single("groupPic"), updateGroup);
 router.delete("/:groupId", deleteGroup);

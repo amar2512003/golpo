@@ -3,17 +3,9 @@ import toast from "react-hot-toast";
 
 import { axiosInstance } from "../lib/axios";
 import { useAuthStore } from "./useAuthStore";
-import { getGroupTypingKey, useTypingStore } from "./useTypingStore";
 
 // Kept in sync with backend MAX_GROUP_MEMBERS (models/group.model.js).
 export const MAX_GROUP_MEMBERS = 6;
-
-// Kept outside the store (it's a singleton module) so each unsubscribe can
-// remove the exact listener it added via socket.off(event, handler) —
-// plain socket.off("newGroupMessage") would remove *both* of these.
-let activeGroupMessageHandler = null;
-let groupConversationUpdateHandler = null;
-let activeGroupPollHandler = null;
 
 // If we're on a call for a group we just lost access to (removed, left
 // elsewhere, or the group was deleted), there's no one left we're
@@ -69,32 +61,10 @@ export const useGroupStore = create((set, get) => ({
     try {
       const res = await axiosInstance.get(`/groups/${groupId}/messages`);
       set({ groupMessages: res.data });
-      // Opening the group is as good as reading everything in it.
-      // Zero the badge locally right away rather than waiting on a round
-      // trip, then tell the backend (fire-and-forget, like DMs) so it
-      // stays correct on the next getGroups() refresh too.
-      set((state) => ({
-        groups: state.groups.map((group) =>
-          group._id === groupId ? { ...group, unreadCount: 0 } : group,
-        ),
-      }));
-      get().markGroupMessagesSeen(groupId);
     } catch (error) {
       toast.error(error.response?.data?.message || "Failed to load messages");
     } finally {
       set({ isGroupMessagesLoading: false });
-    }
-  },
-
-  // Fire-and-forget, mirroring useChatStore's markMessagesSeen — a
-  // failure here just means the unread badge catches up next time the
-  // group list refreshes.
-  markGroupMessagesSeen: async (groupId) => {
-    if (!groupId) return;
-    try {
-      await axiosInstance.put(`/groups/${groupId}/seen`);
-    } catch (error) {
-      console.log("Error in markGroupMessagesSeen", error.message);
     }
   },
 
@@ -289,23 +259,6 @@ export const useGroupStore = create((set, get) => ({
     }
   },
 
-  // Voice notes are uploaded like other media; `duration` (seconds, from the
-  // recorder) rides along because webm files don't carry it reliably.
-  sendGroupVoiceMessage: async ({ groupId, file, duration }) => {
-    if (!groupId || !file) return false;
-
-    const formData = new FormData();
-    formData.append("audioDuration", String(duration ?? ""));
-    formData.append("media", file);
-
-    set({ isSendingGroupMedia: true });
-    try {
-      return await get().sendGroupMessage(formData);
-    } finally {
-      set({ isSendingGroupMedia: false });
-    }
-  },
-
   // Stickers send instantly as their own text message (no composer text
   // involved) so picking one doesn't clobber whatever's already typed.
   sendGroupStickerMessage: async (groupId, sticker) => {
@@ -320,67 +273,6 @@ export const useGroupStore = create((set, get) => ({
     return get().sendGroupMessage({ imageUrl: gifUrl });
   },
 
-  // Shares the sender's current position: an OpenStreetMap static
-  // preview image (no API key needed) alongside a Google Maps link for
-  // the group to open. Rides the normal text+imageUrl message shape —
-  // no schema change needed.
-  sendGroupLocationMessage: async (groupId) => {
-    if (!groupId) return false;
-    if (!navigator.geolocation) {
-      toast.error("Location isn't available on this device");
-      return false;
-    }
-
-    const position = await new Promise((resolve) => {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => resolve(pos),
-        () => resolve(null),
-        { enableHighAccuracy: true, timeout: 10000 },
-      );
-    });
-
-    if (!position) {
-      toast.error("Couldn't get your location");
-      return false;
-    }
-
-    const { latitude, longitude } = position.coords;
-    const previewUrl = `https://staticmap.openstreetmap.de/staticmap.php?center=${latitude},${longitude}&zoom=15&size=480x260&maptype=mapnik&markers=${latitude},${longitude},red-pushpin`;
-    const mapsLink = `https://www.google.com/maps?q=${latitude},${longitude}`;
-
-    return get().sendGroupMessage({ imageUrl: previewUrl, text: `📍 My location: ${mapsLink}` });
-  },
-
-  // Polls go through as { poll } JSON — the backend validates and starts
-  // every option at zero votes.
-  sendGroupPollMessage: async (groupId, { question, options }) => {
-    if (!groupId || !question?.trim()) return false;
-    const cleanOptions = (options || []).map((option) => option.trim()).filter(Boolean);
-    if (cleanOptions.length < 2) return false;
-
-    return get().sendGroupMessage({ poll: { question: question.trim(), options: cleanOptions } });
-  },
-
-  // Single-choice: picking the option you already voted for retracts it
-  // (handled server-side); the response is the source of truth.
-  voteOnGroupPoll: async (messageId, optionIndex) => {
-    if (!messageId) return false;
-    try {
-      const res = await axiosInstance.put(`/groups/messages/${messageId}/poll/vote`, {
-        optionIndex,
-      });
-      set({
-        groupMessages: get().groupMessages.map((message) =>
-          message._id === messageId ? res.data : message,
-        ),
-      });
-      return true;
-    } catch (error) {
-      toast.error(error.response?.data?.message || "Couldn't cast your vote");
-      return false;
-    }
-  },
-
   // Live messages for whichever group is currently open. Own messages are
   // skipped here since sendGroupMessage already appended them locally —
   // this mirrors useChatStore.subscribeToMessages' senderId filter.
@@ -390,77 +282,21 @@ export const useGroupStore = create((set, get) => ({
     const socket = useAuthStore.getState().socket;
     if (!socket) return;
 
-    if (activeGroupMessageHandler) socket.off("newGroupMessage", activeGroupMessageHandler);
-    activeGroupMessageHandler = (newMessage) => {
+    socket.off("newGroupMessage");
+    socket.on("newGroupMessage", (newMessage) => {
       const authUser = useAuthStore.getState().authUser;
       const senderId = newMessage.senderId?._id || newMessage.senderId;
-
-      // A message arriving means its sender is done typing.
-      useTypingStore
-        .getState()
-        .clearTyping(getGroupTypingKey(newMessage.groupId), senderId);
 
       if (String(senderId) === String(authUser?._id)) return;
       if (String(newMessage.groupId) !== String(get().activeGroupId)) return;
 
-      set({
-        groupMessages: [...get().groupMessages, newMessage],
-        groups: get().groups.map((group) =>
-          String(group._id) === String(newMessage.groupId)
-            ? { ...group, lastMessageAt: newMessage.createdAt }
-            : group,
-        ),
-      });
-
-      // This group's thread is open right now, so the message just
-      // rendered counts as read immediately rather than waiting for the
-      // next time the group list is opened.
-      get().markGroupMessagesSeen(newMessage.groupId);
-    };
-    socket.on("newGroupMessage", activeGroupMessageHandler);
-
-    // A poll in this group someone voted on — swap in the updated
-    // document wherever it currently sits in the open thread.
-    if (activeGroupPollHandler) socket.off("groupMessagePollUpdated", activeGroupPollHandler);
-    activeGroupPollHandler = (updatedMessage) => {
-      if (String(updatedMessage.groupId) !== String(get().activeGroupId)) return;
-      set({
-        groupMessages: get().groupMessages.map((message) =>
-          String(message._id) === String(updatedMessage._id) ? updatedMessage : message,
-        ),
-      });
-    };
-    socket.on("groupMessagePollUpdated", activeGroupPollHandler);
+      set({ groupMessages: [...get().groupMessages, newMessage] });
+    });
   },
 
   unsubscribeFromGroupMessages: () => {
     const socket = useAuthStore.getState().socket;
-    if (socket && activeGroupMessageHandler) socket.off("newGroupMessage", activeGroupMessageHandler);
-    if (socket && activeGroupPollHandler) socket.off("groupMessagePollUpdated", activeGroupPollHandler);
-    activeGroupMessageHandler = null;
-    activeGroupPollHandler = null;
-  },
-
-  // Session-wide (not tied to whichever group happens to be open) so the
-  // sidebar's last-message preview and unread badge stay live for every
-  // group, not just the active one.
-  subscribeToGroupConversationUpdates: () => {
-    const socket = useAuthStore.getState().socket;
-    if (!socket) return;
-
-    if (groupConversationUpdateHandler) {
-      socket.off("newGroupMessage", groupConversationUpdateHandler);
-    }
-    groupConversationUpdateHandler = () => get().getGroups();
-    socket.on("newGroupMessage", groupConversationUpdateHandler);
-  },
-
-  unsubscribeFromGroupConversationUpdates: () => {
-    const socket = useAuthStore.getState().socket;
-    if (socket && groupConversationUpdateHandler) {
-      socket.off("newGroupMessage", groupConversationUpdateHandler);
-    }
-    groupConversationUpdateHandler = null;
+    socket?.off("newGroupMessage");
   },
 
   // Membership/roster events — these apply regardless of which thread is
@@ -487,21 +323,8 @@ export const useGroupStore = create((set, get) => ({
     });
 
     socket.on("groupUpdated", (group) => {
-      // groupUpdated only carries the group's own fields (name, members,
-      // etc.) — the last-message preview and unread count are computed
-      // separately by getUserGroups, so carry those over rather than
-      // letting this overwrite them with undefined.
       set((state) => ({
-        groups: state.groups.map((existing) =>
-          existing._id === group._id
-            ? {
-                ...group,
-                lastMessageAt: existing.lastMessageAt,
-                lastMessage: existing.lastMessage,
-                unreadCount: existing.unreadCount,
-              }
-            : existing,
-        ),
+        groups: state.groups.map((existing) => (existing._id === group._id ? group : existing)),
       }));
     });
 

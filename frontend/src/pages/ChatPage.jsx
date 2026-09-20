@@ -1,6 +1,5 @@
 import { useChatStore } from "../store/useChatStore";
 import { useGroupStore } from "../store/useGroupStore";
-import { useTypingStore } from "../store/useTypingStore";
 import { useSelectedConversation } from "../hooks/useSelectedConversation";
 import { useEffect } from "react";
 import ChatSidebar from "../components/chat/ChatSidebar";
@@ -16,10 +15,6 @@ function ChatPage() {
   const getMessages = useChatStore((state) => state.getMessages);
   const subscribeToMessages = useChatStore((state) => state.subscribeToMessages);
   const unsubscribeFromMessages = useChatStore((state) => state.unsubscribeFromMessages);
-  const subscribeToConversationUpdates = useChatStore((state) => state.subscribeToConversationUpdates);
-  const unsubscribeFromConversationUpdates = useChatStore(
-    (state) => state.unsubscribeFromConversationUpdates,
-  );
 
   const getGroups = useGroupStore((state) => state.getGroups);
   const getGroupMessages = useGroupStore((state) => state.getGroupMessages);
@@ -27,15 +22,7 @@ function ChatPage() {
   const unsubscribeFromGroupMessages = useGroupStore((state) => state.unsubscribeFromGroupMessages);
   const subscribeToGroupEvents = useGroupStore((state) => state.subscribeToGroupEvents);
   const unsubscribeFromGroupEvents = useGroupStore((state) => state.unsubscribeFromGroupEvents);
-  const subscribeToGroupConversationUpdates = useGroupStore(
-    (state) => state.subscribeToGroupConversationUpdates,
-  );
-  const unsubscribeFromGroupConversationUpdates = useGroupStore(
-    (state) => state.unsubscribeFromGroupConversationUpdates,
-  );
   const activeGroupId = useGroupStore((state) => state.activeGroupId);
-  const subscribeToTyping = useTypingStore((state) => state.subscribeToTyping);
-  const unsubscribeFromTyping = useTypingStore((state) => state.unsubscribeFromTyping);
 
   const { activeConversation, activeConversationId, activeConversationType, isLargeScreen } =
     useSelectedConversation();
@@ -51,29 +38,6 @@ function ChatPage() {
     subscribeToGroupEvents();
     return () => unsubscribeFromGroupEvents();
   }, [subscribeToGroupEvents, unsubscribeFromGroupEvents]);
-
-  // Keeps the sidebar's last-message preview and unread counts live for
-  // every DM and group, not just whichever one is currently open.
-  useEffect(() => {
-    subscribeToConversationUpdates();
-    subscribeToGroupConversationUpdates();
-    return () => {
-      unsubscribeFromConversationUpdates();
-      unsubscribeFromGroupConversationUpdates();
-    };
-  }, [
-    subscribeToConversationUpdates,
-    unsubscribeFromConversationUpdates,
-    subscribeToGroupConversationUpdates,
-    unsubscribeFromGroupConversationUpdates,
-  ]);
-
-  // Typing state is tracked for every chat (not just the open one) so it's
-  // already correct the moment you switch to a chat someone is typing in.
-  useEffect(() => {
-    subscribeToTyping();
-    return () => unsubscribeFromTyping();
-  }, [subscribeToTyping, unsubscribeFromTyping]);
 
   useEffect(() => {
     if (!activeConversationId || activeConversationType !== "dm") return;
