@@ -6,17 +6,20 @@
 // https://developers.giphy.com and set VITE_GIPHY_API_KEY in the frontend
 // env — everything here already reads from it.
 const GIPHY_API_KEY = import.meta.env.VITE_GIPHY_API_KEY || "dc6zaTOxFJmzC";
-const GIPHY_BASE_URL = "https://api.giphy.com/v1/gifs";
+const GIPHY_GIFS_URL = "https://api.giphy.com/v1/gifs";
+// Same GIPHY API, different collection: transparent, expression-style
+// artwork (the actual "stickers" WhatsApp/Telegram send) instead of GIFs.
+const GIPHY_STICKERS_URL = "https://api.giphy.com/v1/stickers";
 
-async function giphyRequest(endpoint, params) {
-  const url = new URL(`${GIPHY_BASE_URL}/${endpoint}`);
+async function giphyRequest(baseUrl, endpoint, params) {
+  const url = new URL(`${baseUrl}/${endpoint}`);
   url.searchParams.set("api_key", GIPHY_API_KEY);
   url.searchParams.set("limit", "24");
   url.searchParams.set("rating", "pg-13");
   Object.entries(params || {}).forEach(([key, value]) => url.searchParams.set(key, value));
 
   const res = await fetch(url.toString());
-  if (!res.ok) throw new Error("Failed to load GIFs");
+  if (!res.ok) throw new Error("Failed to load from GIPHY");
 
   const { data } = await res.json();
   return data.map((gif) => ({
@@ -35,9 +38,17 @@ async function giphyRequest(endpoint, params) {
 }
 
 export function fetchTrendingGifs() {
-  return giphyRequest("trending");
+  return giphyRequest(GIPHY_GIFS_URL, "trending");
 }
 
 export function searchGifs(query) {
-  return giphyRequest("search", { q: query });
+  return giphyRequest(GIPHY_GIFS_URL, "search", { q: query });
+}
+
+export function fetchTrendingStickers() {
+  return giphyRequest(GIPHY_STICKERS_URL, "trending");
+}
+
+export function searchStickers(query) {
+  return giphyRequest(GIPHY_STICKERS_URL, "search", { q: query });
 }

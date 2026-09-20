@@ -221,6 +221,7 @@ export async function sendMessage(req, res) {
     const {
       text,
       imageUrl: providedImageUrl,
+      isSticker: providedIsSticker,
       poll: providedPoll,
       statusReply: providedStatusReply,
     } = req.body;
@@ -290,11 +291,16 @@ export async function sendMessage(req, res) {
       };
     }
 
+    // Only a real sticker-picker send counts — a plain image upload can't
+    // claim to be a sticker just by setting the flag in the request body.
+    const isSticker = Boolean(providedIsSticker) && Boolean(imageUrl);
+
     const newMessage = new Message({
       senderId,
       receiverId,
       text,
       image: imageUrl,
+      isSticker,
       video: videoUrl,
       audio: audioUrl,
       audioDuration,

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { SmileIcon, StickerIcon, ClapperboardIcon, SearchIcon, LoaderIcon } from "lucide-react";
-import { fetchTrendingGifs, searchGifs } from "../../lib/giphy";
+import { fetchTrendingGifs, searchGifs, fetchTrendingStickers, searchStickers } from "../../lib/giphy";
 
 const EMOJI_GROUPS = [
   {
@@ -34,57 +34,99 @@ const EMOJI_GROUPS = [
   },
 ];
 
-// "Sticker packs" — big, single-emoji stickers grouped by mood, sent
-// straight away instead of being appended to the composer. MessageBubble
-// renders a lone emoji like this jumbo-sized once it lands in the thread.
-const STICKER_PACKS = [
-  {
-    label: "Reactions",
-    stickers: ["😂", "😭", "😍", "😡", "😱", "🥳", "🤯", "🥹", "😴", "🤢"],
-  },
-  {
-    label: "Love",
-    stickers: ["❤️", "💕", "💘", "💋", "🥰", "😘", "💐", "🌹", "😻", "💍"],
-  },
-  {
-    label: "Hands",
-    stickers: ["👍", "👎", "👏", "🙌", "🤝", "🙏", "💪", "🤙", "👌", "✌️"],
-  },
-  {
-    label: "Celebrate",
-    stickers: ["🎉", "🎊", "🥂", "🎂", "🏆", "🔥", "✨", "🚀", "🎈", "💯"],
-  },
-];
-
 const TABS = [
   { id: "emoji", label: "Emoji", Icon: SmileIcon },
   { id: "stickers", label: "Stickers", Icon: StickerIcon },
   { id: "gifs", label: "GIFs", Icon: ClapperboardIcon },
 ];
 
+// Real sticker artwork (transparent PNG/WebP, GIPHY's dedicated stickers
+// collection — not GIFs) shown in a WhatsApp/Telegram-style grid. Sends
+// the full-size image straight away, same as picking a GIF.
 function StickersTab({ onSelectSticker }) {
+  const [query, setQuery] = useState("");
+  const [stickers, setStickers] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    setIsLoading(true);
+    setError(null);
+
+    // Debounce so every keystroke doesn't fire a request.
+    const timer = setTimeout(async () => {
+      try {
+        const results = query.trim()
+          ? await searchStickers(query.trim())
+          : await fetchTrendingStickers();
+        if (!cancelled) setStickers(results);
+      } catch {
+        if (!cancelled) setError("Couldn't load stickers right now");
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    }, 350);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [query]);
+
   return (
-    <div className="space-y-3">
-      {STICKER_PACKS.map((pack) => (
-        <div key={pack.label}>
-          <p className="mb-1.5 px-0.5 text-[11px] font-semibold uppercase tracking-wide text-muted">
-            {pack.label}
-          </p>
-          <div className="grid grid-cols-5 gap-1">
-            {pack.stickers.map((sticker) => (
+    <div className="flex h-full flex-col">
+      <div className="relative mb-2 shrink-0">
+        <SearchIcon
+          className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted"
+          aria-hidden
+        />
+        <input
+          type="text"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Search stickers"
+          className="w-full rounded-lg border border-border bg-surface-secondary py-1.5 pl-8 pr-2.5 text-xs outline-none focus:border-accent"
+        />
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {isLoading ? (
+          <div className="flex h-full flex-col items-center justify-center gap-2 text-muted">
+            <LoaderIcon className="size-6 animate-spin" strokeWidth={2} aria-hidden />
+            <p className="text-xs">Loading stickers…</p>
+          </div>
+        ) : error ? (
+          <div className="flex h-full flex-col items-center justify-center gap-1 text-center text-muted">
+            <StickerIcon className="size-7" strokeWidth={1.5} aria-hidden />
+            <p className="text-xs font-medium">{error}</p>
+          </div>
+        ) : stickers.length === 0 ? (
+          <div className="flex h-full flex-col items-center justify-center gap-1 text-center text-muted">
+            <p className="text-xs font-medium">No stickers found</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-3 gap-1.5">
+            {stickers.map((sticker) => (
               <button
-                key={sticker}
+                key={sticker.id}
                 type="button"
-                onClick={() => onSelectSticker?.(sticker)}
-                className="flex aspect-square items-center justify-center rounded-lg text-3xl transition-colors hover:bg-surface-secondary"
-                aria-label={`Send ${sticker} sticker`}
+                onClick={() => onSelectSticker?.(sticker.fullUrl)}
+                className="flex aspect-square items-center justify-center rounded-lg p-1 transition-colors hover:bg-surface-secondary"
+                aria-label={`Send ${sticker.title} sticker`}
               >
-                {sticker}
+                <img
+                  src={sticker.previewUrl}
+                  alt=""
+                  loading="lazy"
+                  className="h-full w-full object-contain"
+                />
               </button>
             ))}
           </div>
-        </div>
-      ))}
+        )}
+      </div>
     </div>
   );
 }
@@ -214,7 +256,7 @@ export function EmojiPicker({ onSelectEmoji, onSelectSticker, onSelectGif, onClo
     <div
       ref={panelRef}
       className={`emoji-picker absolute bottom-full left-0 z-20 mb-2 flex max-h-[70dvh] w-72 flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-xl sm:w-80 ${
-        activeTab === "gifs" ? "h-96" : "h-80"
+        activeTab === "gifs" || activeTab === "stickers" ? "h-96" : "h-80"
       }`}
       role="dialog"
       aria-label="Emoji picker"

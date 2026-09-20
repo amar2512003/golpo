@@ -309,9 +309,12 @@ export const useGroupStore = create((set, get) => ({
 
   // Stickers send instantly as their own text message (no composer text
   // involved) so picking one doesn't clobber whatever's already typed.
-  sendGroupStickerMessage: async (groupId, sticker) => {
-    if (!groupId || !sticker) return false;
-    return get().sendGroupMessage({ text: sticker });
+  // Stickers are already-hosted images (from the sticker picker); `isSticker`
+  // tells the bubble to render it borderless/oversized instead of as a
+  // chat image.
+  sendGroupStickerMessage: async (groupId, stickerUrl) => {
+    if (!groupId || !stickerUrl) return false;
+    return get().sendGroupMessage({ imageUrl: stickerUrl, isSticker: true });
   },
 
   // GIFs are already-hosted images (from the GIF picker), so they go

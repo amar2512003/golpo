@@ -55,6 +55,10 @@ export function MessageBubble({ message, isGroup }) {
   const hasAudio = Boolean(message.audioUrl);
   const hasPoll = Boolean(message.poll?.question) && (message.poll?.options?.length ?? 0) > 0;
   const statusReply = message.statusReply;
+  // A real sticker-pack image (from the sticker picker) — carries the
+  // same borderless/oversized treatment as the legacy lone-emoji stickers
+  // below, just with an <img> instead of text.
+  const isImageSticker = hasImage && Boolean(message.isSticker);
   const isSticker =
     !hasImage &&
     !hasVideo &&
@@ -67,14 +71,23 @@ export function MessageBubble({ message, isGroup }) {
   // so ticks are scoped to 1:1 chats for free.
   const showReceipt = isOwnMessage && typeof message.seen === "boolean";
 
-  if (isSticker) {
+  if (isImageSticker || isSticker) {
     return (
       <div className={`flex w-full ${isOwnMessage ? "justify-end" : "justify-start"}`}>
         <div className={`flex max-w-[min(90%,28rem)] flex-col gap-0.5 ${isOwnMessage ? "items-end" : "items-start"}`}>
           {message.senderName ? (
             <p className="px-1 text-[12px] font-semibold text-accent">{message.senderName}</p>
           ) : null}
-          <p className="text-6xl leading-none">{message.text}</p>
+          {isImageSticker ? (
+            <img
+              src={message.imageUrl}
+              alt="Sticker"
+              loading="lazy"
+              className="h-36 w-36 object-contain"
+            />
+          ) : (
+            <p className="text-6xl leading-none">{message.text}</p>
+          )}
           <p
             className={`flex items-center gap-1 px-1 text-[11px] tabular-nums text-muted ${
               isOwnMessage ? "justify-end" : ""

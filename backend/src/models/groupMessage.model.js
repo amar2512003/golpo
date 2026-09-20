@@ -35,6 +35,13 @@ const groupMessageSchema = new mongoose.Schema(
     image: {
       type: String,
     },
+    // True when `image` is a sticker (from the sticker picker) rather than
+    // a photo or a GIF — lets the bubble render it borderless/oversized
+    // the way WhatsApp/Telegram show stickers, instead of a chat image.
+    isSticker: {
+      type: Boolean,
+      default: false,
+    },
     video: {
       type: String,
     },

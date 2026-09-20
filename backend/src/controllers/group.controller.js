@@ -323,7 +323,12 @@ export async function markGroupMessagesSeen(req, res) {
 export async function sendGroupMessage(req, res) {
   try {
     const { groupId } = req.params;
-    const { text, imageUrl: providedImageUrl, poll: providedPoll } = req.body;
+    const {
+      text,
+      imageUrl: providedImageUrl,
+      isSticker: providedIsSticker,
+      poll: providedPoll,
+    } = req.body;
     const senderId = req.user._id;
 
     const group = await Group.findById(groupId);
@@ -368,11 +373,16 @@ export async function sendGroupMessage(req, res) {
       }
     }
 
+    // Only a real sticker-picker send counts — a plain image upload can't
+    // claim to be a sticker just by setting the flag in the request body.
+    const isSticker = Boolean(providedIsSticker) && Boolean(imageUrl);
+
     const newMessage = await GroupMessage.create({
       groupId,
       senderId,
       text,
       image: imageUrl,
+      isSticker,
       video: videoUrl,
       audio: audioUrl,
       audioDuration,

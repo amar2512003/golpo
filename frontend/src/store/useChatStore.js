@@ -321,12 +321,14 @@ export const useChatStore = create(
         }
       },
 
-      // Stickers send instantly as their own text message (no composer
-      // text involved) so picking one doesn't clobber whatever's already
-      // typed.
-      sendStickerMessage: async (conversationId, sticker) => {
-        if (!conversationId || !sticker) return false;
-        return get().sendMessage({ text: sticker });
+      // Stickers are already-hosted images (from the sticker picker), sent
+      // instantly rather than going through the composer text — picking
+      // one shouldn't touch a draft already in progress. `isSticker` tells
+      // the bubble to render it borderless/oversized instead of as a chat
+      // image.
+      sendStickerMessage: async (conversationId, stickerUrl) => {
+        if (!conversationId || !stickerUrl) return false;
+        return get().sendMessage({ imageUrl: stickerUrl, isSticker: true });
       },
 
       // GIFs are already-hosted images (from the GIF picker), so they go
