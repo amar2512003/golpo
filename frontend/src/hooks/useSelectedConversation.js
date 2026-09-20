@@ -25,8 +25,8 @@ function mapAiToConversation({ messages }) {
     isAi: true,
     peer: {
       _id: AI_CONVERSATION_ID,
-      name: "AI Assistant",
-      subtitle: "Powered by Groq",
+      name: "AI",
+      subtitle: "Powered by Open AI",
       isOnline: true,
       avatarUrl: null,
       initials: "AI",
