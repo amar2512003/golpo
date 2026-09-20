@@ -156,21 +156,10 @@ html.dark .emoji-picker { box-shadow: 0 18px 45px #0009; }
 .auth-card .text-accent { color: #8b97ff; }
 .auth-card img { width: 80px; height: 60px; object-fit: cover; border-radius: 10px; }
 
-.goppo-loader { position: relative; display: flex; min-height: 100dvh; overflow: hidden; align-items: center; justify-content: center; flex-direction: column; background: radial-gradient(ellipse at 80% 0%, #2a2f664d, transparent 45%), #070a13; color: #f5f6fc; padding: 40px 24px; }
-.loader-content { position: relative; z-index: 1; width: min(100%, 400px); text-align: center; }
-.loader-logo { width: 300px; max-width: 100%; height: auto; margin: 0 auto 22px; }
-.loader-content h1 { font-size: 22px; font-weight: 600; letter-spacing: -.02em; }
-.loader-content > p { font-size: 14px; color: #aab4cf; margin-top: 10px; }
-.loader-content > p span, .loader-quote span { color: #7c8bff; }
-.loader-track { height: 8px; overflow: hidden; background: #1a2032; border-radius: 99px; margin: 32px 24px 0; }
-.loader-track span { display: block; width: 50%; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #6673ff, #5b6dfa, #22c3a6); animation: goppo-loading 1.8s ease-in-out infinite alternate; }
-.loader-features { display: flex; justify-content: space-between; margin: 60px 20px 0; color: #b3bcd8; font-size: 12px; }
-.loader-features span { display: grid; justify-items: center; gap: 10px; }
-.loader-features svg { width: 24px; height: 24px; stroke-width: 1.5; }
-.loader-quote { position: relative; z-index: 1; margin-top: 60px; color: #8892b3; font: italic 20px/1.55 Georgia, serif; text-align: center; }
-.loader-orbit { position: absolute; width: 380px; height: 380px; border-radius: 50%; background: linear-gradient(140deg, #22284d 25%, #1a4a55 50%, #22c3a6 75%, #171326); box-shadow: inset 0 0 0 1px #7c8bff66, 0 0 60px #5b6dfa14; }
-.loader-orbit-top { top: -280px; left: -190px; }
-.loader-orbit-bottom { bottom: -260px; right: -170px; }
+.goppo-loader { position: relative; display: flex; min-height: 100dvh; align-items: center; justify-content: center; flex-direction: column; background: #000; color: #f5f6fc; padding: 40px 24px; }
+.loader-logo { width: 260px; max-width: 70%; height: auto; margin: 0 auto 36px; }
+.loader-track { width: 220px; max-width: 60%; height: 8px; overflow: hidden; background: #2a2015; border-radius: 99px; }
+.loader-track span { display: block; width: 45%; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #f7941e, #ffb347); animation: goppo-loading 1.8s ease-in-out infinite alternate; }
 @keyframes goppo-loading { from { transform: translateX(-80%); } to { transform: translateX(165%); } }
 
 @media (min-width: 1100px) {

@@ -29,8 +29,24 @@ const GRID_COLS_BY_COUNT = {
   6: "grid-cols-2 sm:grid-cols-3",
 };
 
+// Fewer tiles should fill more of the screen, more tiles should pack
+// tighter instead of spreading thin — so the grid's own width shrinks
+// as people join, on top of the column count above.
+const GRID_MAX_WIDTH_BY_COUNT = {
+  1: "max-w-3xl",
+  2: "max-w-5xl",
+  3: "max-w-4xl",
+  4: "max-w-4xl",
+  5: "max-w-3xl",
+  6: "max-w-3xl",
+};
+
 function gridColsClass(count) {
   return GRID_COLS_BY_COUNT[count] || GRID_COLS_BY_COUNT[6];
+}
+
+function gridMaxWidthClass(count) {
+  return GRID_MAX_WIDTH_BY_COUNT[count] || GRID_MAX_WIDTH_BY_COUNT[6];
 }
 
 function formatDuration(totalSeconds) {
@@ -338,7 +354,7 @@ export function GroupCallModal() {
         </div>
       ) : (
         <div className="relative z-10 flex flex-1 items-center justify-center overflow-y-auto">
-          <div className={`grid w-full max-w-4xl gap-3 ${gridColsClass(tileCount)}`}>
+          <div className={`grid w-full ${gridMaxWidthClass(tileCount)} gap-3 ${gridColsClass(tileCount)}`}>
             {localTile()}
 
             {peerEntries.map(([userId, peer]) => (
