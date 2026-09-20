@@ -31,6 +31,7 @@ function mapUserToConversation({ user, messages, authUser, onlineUsers }) {
     audioUrl: message.audio,
     audioDuration: message.audioDuration,
     poll: message.poll,
+    statusReply: message.statusReply,
     seen: message.seen,
   }));
 

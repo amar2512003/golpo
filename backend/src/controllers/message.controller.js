@@ -1,5 +1,6 @@
 import User from "../models/user.model.js";
 import Message from "../models/message.model.js";
+import Status from "../models/status.model.js";
 import { hasImageKitConfig, uploadChatMedia } from "../lib/imagekit.js";
 import { getReceiverSocketId, io } from "../lib/socket.js";
 import { parseAudioDuration } from "../lib/voice.js";
@@ -217,7 +218,12 @@ export async function markMessagesSeen(req, res) {
 
 export async function sendMessage(req, res) {
   try {
-    const { text, imageUrl: providedImageUrl, poll: providedPoll } = req.body;
+    const {
+      text,
+      imageUrl: providedImageUrl,
+      poll: providedPoll,
+      statusReply: providedStatusReply,
+    } = req.body;
     const { id: receiverId } = req.params;
     const senderId = req.user._id;
 
@@ -253,6 +259,37 @@ export async function sendMessage(req, res) {
       }
     }
 
+    // A status reply is a normal DM that just carries a tag saying which
+    // status it's responding to. The client only sends the statusId —
+    // the image/caption shown on the bubble come from the database, not
+    // from the client, so a reply can't be spoofed to quote content that
+    // was never actually posted.
+    let statusReply;
+    if (providedStatusReply?.statusId) {
+      const status = await Status.findById(providedStatusReply.statusId);
+
+      if (!status) {
+        return res.status(404).json({ message: "That status is no longer available" });
+      }
+
+      // The status has to belong to the person you're replying to — this
+      // is a DM route, so "reply to their status" and "send this message
+      // to them" are the same recipient by construction.
+      if (String(status.userId) !== String(receiverId)) {
+        return res.status(400).json({ message: "That status doesn't belong to this conversation" });
+      }
+
+      if (!text?.trim()) {
+        return res.status(400).json({ message: "Say something in your reply" });
+      }
+
+      statusReply = {
+        statusId: status._id,
+        image: status.image,
+        caption: status.caption,
+      };
+    }
+
     const newMessage = new Message({
       senderId,
       receiverId,
@@ -262,6 +299,7 @@ export async function sendMessage(req, res) {
       audio: audioUrl,
       audioDuration,
       poll,
+      statusReply,
     });
 
     await newMessage.save();

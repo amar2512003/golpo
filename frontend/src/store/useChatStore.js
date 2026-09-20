@@ -376,6 +376,35 @@ export const useChatStore = create(
         return get().sendMessage({ poll: { question: question.trim(), options: cleanOptions } });
       },
 
+      // Sent from the status viewer, which isn't necessarily looking at
+      // an open DM thread — so unlike the other send* helpers above, this
+      // doesn't depend on `selectedUser` being set to the right person.
+      // It patches the message straight into that DM's thread if it
+      // happens to already be open, and refreshes the sidebar either way
+      // so the sender's own preview updates immediately.
+      sendStatusReplyMessage: async ({ receiverId, statusId, text }) => {
+        if (!receiverId || !statusId || !text?.trim()) return false;
+
+        try {
+          const res = await axiosInstance.post(`/messages/send/${receiverId}`, {
+            text: text.trim(),
+            statusReply: { statusId },
+          });
+
+          set((state) =>
+            state.activeConversationId === receiverId
+              ? { messages: [...state.messages, res.data] }
+              : {},
+          );
+
+          get().getConversations();
+          return true;
+        } catch (error) {
+          toast.error(error.response?.data?.message || "Couldn't send your reply");
+          return false;
+        }
+      },
+
       // Single-choice: picking the option you already voted for retracts
       // it (handled server-side); the response is the source of truth.
       voteOnPoll: async (messageId, optionIndex) => {

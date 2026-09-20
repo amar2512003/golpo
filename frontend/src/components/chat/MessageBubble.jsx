@@ -47,11 +47,13 @@ export function MessageBubble({ message, isGroup }) {
   const hasVideo = Boolean(message.videoUrl);
   const hasAudio = Boolean(message.audioUrl);
   const hasPoll = Boolean(message.poll?.question) && (message.poll?.options?.length ?? 0) > 0;
+  const statusReply = message.statusReply;
   const isSticker =
     !hasImage &&
     !hasVideo &&
     !hasAudio &&
     !hasPoll &&
+    !statusReply &&
     STICKER_TEXT_REGEX.test((message.text || "").trim());
   // `seen` only exists on DM messages (group messages don't track it),
   // so ticks are scoped to 1:1 chats for free.
@@ -96,6 +98,30 @@ export function MessageBubble({ message, isGroup }) {
       >
         {message.senderName ? (
           <p className="mb-0.5 text-[12px] font-semibold text-accent">{message.senderName}</p>
+        ) : null}
+        {statusReply ? (
+          <div
+            className={`mb-1.5 flex items-center gap-2 rounded-lg border-l-2 p-1.5 ${
+              isOwnMessage
+                ? "border-accent-foreground/40 bg-accent-foreground/10"
+                : "border-accent bg-background/60"
+            }`}
+          >
+            {statusReply.image ? (
+              <img
+                src={withTransform(statusReply.image, "q-auto,w-96,f-auto")}
+                alt=""
+                className="size-10 shrink-0 rounded-md object-cover"
+              />
+            ) : null}
+            <p
+              className={`min-w-0 truncate text-[12px] ${
+                isOwnMessage ? "text-accent-foreground/75" : "text-muted"
+              }`}
+            >
+              {statusReply.caption || "Replied to a status"}
+            </p>
+          </div>
         ) : null}
         {hasImage ? (
           <img

@@ -92,6 +92,7 @@ function ChatSidebar() {
 
   const others = useStatusStore((state) => state.others);
   const hasUnseenStatuses = others.some((bucket) => bucket.hasUnseen);
+  const openStatusViewer = useStatusStore((state) => state.openStatusViewer);
 
   const onlineUsers = useAuthStore((state) => state.onlineUsers);
   const authUserId = useAuthStore((state) => state.authUser?._id);
@@ -230,6 +231,7 @@ function ChatSidebar() {
                   user={chat}
                   selected={activeConversationType === "dm" && chat.id === activeConversationId}
                   onSelect={() => setActiveConversationId(chat.id)}
+                  onOpenStatus={chat.hasStatus ? () => openStatusViewer(chat.id) : undefined}
                 />
               ),
             )

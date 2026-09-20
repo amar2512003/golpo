@@ -1,8 +1,18 @@
 import { useEffect, useRef, useState } from "react";
 import { Avatar, Button } from "@heroui/react";
-import { ChevronLeftIcon, ChevronRightIcon, EyeIcon, TrashIcon, XIcon } from "lucide-react";
+import {
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  EyeIcon,
+  LoaderIcon,
+  SendIcon,
+  TrashIcon,
+  XIcon,
+} from "lucide-react";
+import toast from "react-hot-toast";
 
 import { useStatusStore } from "../../store/useStatusStore";
+import { useChatStore } from "../../store/useChatStore";
 import { getInitials } from "../../hooks/useSelectedConversation";
 import { formatTimeAgo, formatTimeLeft } from "../../lib/utils";
 
@@ -18,6 +28,7 @@ export function StatusViewerModal() {
   const rewindStatusViewer = useStatusStore((state) => state.rewindStatusViewer);
   const markStatusSeen = useStatusStore((state) => state.markStatusSeen);
   const deleteStatus = useStatusStore((state) => state.deleteStatus);
+  const sendStatusReplyMessage = useChatStore((state) => state.sendStatusReplyMessage);
 
   // Progress for the current slide, 0-1. Paused while the image is still
   // loading (so a slow connection doesn't burn the whole 5 seconds on a
@@ -26,6 +37,8 @@ export function StatusViewerModal() {
   const [isImageReady, setIsImageReady] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [showViewers, setShowViewers] = useState(false);
+  const [replyText, setReplyText] = useState("");
+  const [isSendingReply, setIsSendingReply] = useState(false);
 
   const isMine = Boolean(mine && mine.userId === viewerUserId);
   const bucket = isMine ? mine : others.find((entry) => entry.userId === viewerUserId);
@@ -39,6 +52,7 @@ export function StatusViewerModal() {
     setProgress(0);
     setIsImageReady(false);
     setShowViewers(false);
+    setReplyText("");
   }, [status?._id]);
 
   // Opening someone's status is what marks it seen — that's what turns
@@ -51,7 +65,7 @@ export function StatusViewerModal() {
   // The auto-advance timer. Ticks the progress bar rather than firing one
   // long timeout, so pausing (press and hold) can freeze it mid-slide.
   useEffect(() => {
-    if (!status || !isImageReady || isPaused || showViewers) return;
+    if (!status || !isImageReady || isPaused || showViewers || replyText) return;
 
     const tickMs = 50;
     const timer = setInterval(() => {
@@ -66,13 +80,19 @@ export function StatusViewerModal() {
     }, tickMs);
 
     return () => clearInterval(timer);
-  }, [status, isImageReady, isPaused, showViewers]);
+  }, [status, isImageReady, isPaused, showViewers, replyText]);
 
   // Keyboard controls: arrows to move through the reel, Escape to leave.
   useEffect(() => {
     if (!viewerUserId) return;
 
     const handleKeyDown = (event) => {
+      // Don't hijack arrow keys or Escape while the person is typing a
+      // reply — Escape should close the composer's focus, not the
+      // whole viewer, and the arrows should move the cursor, not the reel.
+      const tag = event.target?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+
       if (event.key === "Escape") closeStatusViewer();
       else if (event.key === "ArrowRight") advanceStatusViewer();
       else if (event.key === "ArrowLeft") rewindStatusViewer();
@@ -93,6 +113,25 @@ export function StatusViewerModal() {
   const handleDelete = async () => {
     const deleted = await deleteStatus(status._id);
     if (deleted) closeStatusViewer();
+  };
+
+  const handleReplySubmit = async (event) => {
+    event.preventDefault();
+    const trimmed = replyText.trim();
+    if (!trimmed || isSendingReply) return;
+
+    setIsSendingReply(true);
+    const sent = await sendStatusReplyMessage({
+      receiverId: bucket.userId,
+      statusId: status._id,
+      text: trimmed,
+    });
+    setIsSendingReply(false);
+
+    if (sent) {
+      setReplyText("");
+      toast.success(`Reply sent to ${bucket.fullName}`);
+    }
   };
 
   const viewers = status.viewers || [];
@@ -218,7 +257,9 @@ export function StatusViewerModal() {
         ) : null}
       </div>
 
-      {/* Only the author sees who watched. */}
+      {/* Only the author sees who watched; everyone else gets a box to
+          reply straight to this status, which lands as a normal DM
+          tagged with a preview of what they replied to. */}
       {isMine ? (
         <div className="shrink-0 px-4 pb-4">
           <Button
@@ -260,7 +301,35 @@ export function StatusViewerModal() {
             </div>
           ) : null}
         </div>
-      ) : null}
+      ) : (
+        <form
+          onSubmit={handleReplySubmit}
+          className="flex shrink-0 items-center gap-2 px-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))]"
+        >
+          <input
+            type="text"
+            value={replyText}
+            maxLength={500}
+            onChange={(event) => setReplyText(event.target.value)}
+            onFocus={() => setIsPaused(true)}
+            onBlur={() => setIsPaused(false)}
+            placeholder={`Reply to ${bucket.fullName}`}
+            className="min-w-0 flex-1 rounded-full border border-white/20 bg-white/10 px-4 py-2.5 text-sm text-white placeholder-white/50 outline-none focus:border-white/40"
+          />
+          <button
+            type="submit"
+            disabled={!replyText.trim() || isSendingReply}
+            className="flex size-10 shrink-0 items-center justify-center rounded-full bg-white text-black transition-opacity disabled:opacity-40"
+            aria-label="Send reply"
+          >
+            {isSendingReply ? (
+              <LoaderIcon className="size-4 animate-spin" />
+            ) : (
+              <SendIcon className="size-4" />
+            )}
+          </button>
+        </form>
+      )}
     </div>
   );
 }
