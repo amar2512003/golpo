@@ -108,6 +108,8 @@ export async function getConversationsForSidebar(req, res) {
           lastMessageImage: { $last: "$image" },
           lastMessageVideo: { $last: "$video" },
           lastMessageAudio: { $last: "$audio" },
+          lastMessageIsSticker: { $last: "$isSticker" },
+          lastMessagePollQuestion: { $last: "$poll.question" },
           lastMessageSenderId: { $last: "$senderId" },
           unreadCount: {
             $sum: {
@@ -150,6 +152,8 @@ export async function getConversationsForSidebar(req, res) {
                   image: "$lastMessageImage",
                   video: "$lastMessageVideo",
                   audio: "$lastMessageAudio",
+                  isSticker: "$lastMessageIsSticker",
+                  poll: { question: "$lastMessagePollQuestion" },
                   senderId: "$lastMessageSenderId",
                 },
               },

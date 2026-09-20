@@ -103,7 +103,9 @@ export function formatLastMessagePreview(lastMessage) {
   if (lastMessage.poll?.question) return "📊 Poll";
   // Checked before `image`: older location messages also carry a map image.
   if (parseLocationMessage(lastMessage.text)) return "📍 Location";
-  if (lastMessage.image) return "📷 Photo";
+  // Stickers are stored as images with an isSticker flag — label them as
+  // stickers rather than photos.
+  if (lastMessage.image) return lastMessage.isSticker ? "🏷️ Sticker" : "📷 Photo";
   if (lastMessage.video) return "📹 Video";
   if (lastMessage.audio) return "🎤 Voice message";
   if (lastMessage.text) return lastMessage.text;

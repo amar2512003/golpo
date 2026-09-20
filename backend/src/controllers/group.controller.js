@@ -111,6 +111,8 @@ export async function getUserGroups(req, res) {
           lastMessageImage: { $last: "$image" },
           lastMessageVideo: { $last: "$video" },
           lastMessageAudio: { $last: "$audio" },
+          lastMessageIsSticker: { $last: "$isSticker" },
+          lastMessagePollQuestion: { $last: "$poll.question" },
           lastMessageSenderId: { $last: "$senderId" },
         },
       },
@@ -147,6 +149,10 @@ export async function getUserGroups(req, res) {
                 image: lastMessageRow.lastMessageImage,
                 video: lastMessageRow.lastMessageVideo,
                 audio: lastMessageRow.lastMessageAudio,
+                isSticker: lastMessageRow.lastMessageIsSticker,
+                poll: lastMessageRow.lastMessagePollQuestion
+                  ? { question: lastMessageRow.lastMessagePollQuestion }
+                  : undefined,
                 senderId: lastMessageRow.lastMessageSenderId,
               }
             : null,
