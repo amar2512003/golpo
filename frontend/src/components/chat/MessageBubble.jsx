@@ -1,6 +1,8 @@
 import { CheckCheck } from "lucide-react";
 import { withTransform } from "../../lib/imagekit";
 import { splitTextWithLinks } from "../../lib/utils";
+import { parseLocationMessage } from "../../lib/location";
+import { LocationCard } from "./LocationCard";
 import { MessageVideo } from "./MessageVideo";
 import { VoiceMessagePlayer } from "./VoiceMessagePlayer";
 import { PollBubble } from "./PollBubble";
@@ -43,7 +45,12 @@ function MessageText({ text, isOwnMessage }) {
 
 export function MessageBubble({ message, isGroup }) {
   const isOwnMessage = message.role === "me";
-  const hasImage = Boolean(message.imageUrl);
+  // A shared location arrives as text ("📍 My location: <maps link>"); when
+  // it does, the bubble shows a map card instead of the raw link. Older
+  // location messages also carry a static-map imageUrl — the card replaces
+  // that too, so it's ignored for these.
+  const location = parseLocationMessage(message.text);
+  const hasImage = Boolean(message.imageUrl) && !location;
   const hasVideo = Boolean(message.videoUrl);
   const hasAudio = Boolean(message.audioUrl);
   const hasPoll = Boolean(message.poll?.question) && (message.poll?.options?.length ?? 0) > 0;
@@ -54,6 +61,7 @@ export function MessageBubble({ message, isGroup }) {
     !hasAudio &&
     !hasPoll &&
     !statusReply &&
+    !location &&
     STICKER_TEXT_REGEX.test((message.text || "").trim());
   // `seen` only exists on DM messages (group messages don't track it),
   // so ticks are scoped to 1:1 chats for free.
@@ -90,7 +98,9 @@ export function MessageBubble({ message, isGroup }) {
   return (
     <div className={`flex w-full ${isOwnMessage ? "justify-end" : "justify-start"}`}>
       <div
-        className={`message-bubble max-w-[min(90%,28rem)] rounded-2xl px-3 py-2 text-[15px] leading-snug sm:max-w-[min(75%,28rem)] sm:px-3.5 ${
+        className={`message-bubble ${
+          location ? "message-bubble--location" : ""
+        } max-w-[min(90%,28rem)] rounded-2xl px-3 py-2 text-[15px] leading-snug sm:max-w-[min(75%,28rem)] sm:px-3.5 ${
           isOwnMessage
             ? "rounded-br-md bg-accent text-accent-foreground"
             : "rounded-bl-md bg-surface"
@@ -146,7 +156,15 @@ export function MessageBubble({ message, isGroup }) {
             isOwnMessage={isOwnMessage}
           />
         ) : null}
-        {message.text ? <MessageText text={message.text} isOwnMessage={isOwnMessage} /> : null}
+        {location ? (
+          <LocationCard
+            latitude={location.latitude}
+            longitude={location.longitude}
+            href={location.href}
+          />
+        ) : message.text ? (
+          <MessageText text={message.text} isOwnMessage={isOwnMessage} />
+        ) : null}
         <p
           className={`mt-1 flex items-center gap-1 text-[11px] tabular-nums ${
             isOwnMessage ? "justify-end text-accent-foreground/75" : "text-muted"

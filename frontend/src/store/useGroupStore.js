@@ -2,6 +2,7 @@ import { create } from "zustand";
 import toast from "react-hot-toast";
 
 import { axiosInstance } from "../lib/axios";
+import { buildLocationMessageText } from "../lib/location";
 import { useAuthStore } from "./useAuthStore";
 import { getGroupTypingKey, useTypingStore } from "./useTypingStore";
 
@@ -320,10 +321,10 @@ export const useGroupStore = create((set, get) => ({
     return get().sendGroupMessage({ imageUrl: gifUrl });
   },
 
-  // Shares the sender's current position: an OpenStreetMap static
-  // preview image (no API key needed) alongside a Google Maps link for
-  // the group to open. Rides the normal text+imageUrl message shape —
-  // no schema change needed.
+  // Shares the sender's current position as a plain text message
+  // carrying a Google Maps link. The chat bubble recognises that shape
+  // and draws it as a map card (see LocationCard), so no image is
+  // uploaded or attached and no schema change is needed.
   sendGroupLocationMessage: async (groupId) => {
     if (!groupId) return false;
     if (!navigator.geolocation) {
@@ -345,10 +346,8 @@ export const useGroupStore = create((set, get) => ({
     }
 
     const { latitude, longitude } = position.coords;
-    const previewUrl = `https://staticmap.openstreetmap.de/staticmap.php?center=${latitude},${longitude}&zoom=15&size=480x260&maptype=mapnik&markers=${latitude},${longitude},red-pushpin`;
-    const mapsLink = `https://www.google.com/maps?q=${latitude},${longitude}`;
 
-    return get().sendGroupMessage({ imageUrl: previewUrl, text: `📍 My location: ${mapsLink}` });
+    return get().sendGroupMessage({ text: buildLocationMessageText(latitude, longitude) });
   },
 
   // Polls go through as { poll } JSON — the backend validates and starts

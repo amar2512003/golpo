@@ -1,3 +1,5 @@
+import { parseLocationMessage } from "./location";
+
 export function formatMessageTime(date) {
   return new Date(date).toLocaleTimeString([], {
     hour: "numeric",
@@ -99,6 +101,8 @@ export function formatTimeLeft(expiresAt) {
 export function formatLastMessagePreview(lastMessage) {
   if (!lastMessage) return "";
   if (lastMessage.poll?.question) return "📊 Poll";
+  // Checked before `image`: older location messages also carry a map image.
+  if (parseLocationMessage(lastMessage.text)) return "📍 Location";
   if (lastMessage.image) return "📷 Photo";
   if (lastMessage.video) return "📹 Video";
   if (lastMessage.audio) return "🎤 Voice message";
