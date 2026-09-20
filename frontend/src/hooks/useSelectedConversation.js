@@ -20,9 +20,18 @@ export function getInitials(name) {
 // 2. User → peer
 
 function mapUserToConversation({ user, messages, authUser, onlineUsers }) {
+  // A DM only ever holds messages between me and this peer, so "not from
+  // the peer" already means "mine". Prefer the exact id match when we know
+  // who we are, but don't let a missing authUser flip every message to the
+  // other side.
+  const isMine = (senderId) =>
+    authUser?._id
+      ? String(senderId) === String(authUser._id)
+      : String(senderId) !== String(user._id);
+
   const mappedMessages = messages.map((message) => ({
     id: message._id,
-    role: String(message.senderId) === String(authUser?._id) ? "me" : "them",
+    role: isMine(message.senderId) ? "me" : "them",
     text: message.text || "",
     time: formatMessageTime(message.createdAt),
     createdAt: message.createdAt,

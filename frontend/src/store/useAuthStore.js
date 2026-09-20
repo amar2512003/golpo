@@ -7,28 +7,49 @@ const BASE_URL =
     ? "http://localhost:3000"
     : window.location.origin;
 
+// Waits (ms) between /auth/check retries — see checkAuth below.
+const AUTH_RETRY_DELAYS_MS = [400, 1000, 2000];
+
 export const useAuthStore = create((set, get) => ({
   authUser: null,
   isCheckingAuth: true,
   onlineUsers: [],
   socket: null,
 
+  // The very first /auth/check after a page load can fail even though the
+  // user really is signed in: Clerk's session cookie may still be a stale
+  // (short-lived) one at that instant, or the backend may be cold-starting.
+  // If that single call is treated as final, `authUser` stays null for the
+  // whole session — and every "is this message mine?" check downstream
+  // (chat bubble side, "You:" previews, group ownership) silently fails.
+  // So: ask Clerk for a fresh token first, and retry a few times.
   checkAuth: async () => {
     set({ isCheckingAuth: true });
 
-    try {
-      const res = await axiosInstance.get("/auth/check");
+    let lastError = null;
 
-      set({ authUser: res.data });
+    for (let attempt = 0; attempt <= AUTH_RETRY_DELAYS_MS.length; attempt++) {
+      try {
+        // Makes Clerk (re)write a fresh __session cookie before we call the API.
+        await window.Clerk?.session?.getToken().catch(() => {});
 
-      get().connectSocket(res.data);
-    } catch (error) {
-      console.error("Error in checkAuth:", error);
+        const res = await axiosInstance.get("/auth/check");
+        if (!res.data?._id) throw new Error("Auth check returned no user");
 
-      set({ authUser: null });
-    } finally {
-      set({ isCheckingAuth: false });
+        set({ authUser: res.data, isCheckingAuth: false });
+        get().connectSocket(res.data);
+        return;
+      } catch (error) {
+        lastError = error;
+        if (attempt < AUTH_RETRY_DELAYS_MS.length) {
+          await new Promise((resolve) => setTimeout(resolve, AUTH_RETRY_DELAYS_MS[attempt]));
+        }
+      }
     }
+
+    console.error("Error in checkAuth:", lastError);
+    // Keep an already-loaded user if a background re-check fails.
+    set((state) => ({ authUser: state.authUser ?? null, isCheckingAuth: false }));
   },
 
   clearAuth: () => {
