@@ -14,6 +14,7 @@ live : https://golpooo.vercel.app/
 - 🟢 Online/offline user presence
 - 🖼️ Image sharing with ImageKit
 - 🎙️ Voice messages (record and send voice notes in DMs and groups)
+- 📸 Status updates — image stories that expire after 24 hours, with a glowing ring on unseen ones
 - 🎨 Customizable themes
 - 🖥️ Custom chat wallpapers
 - 🔊 Keyboard and interaction sounds
@@ -25,6 +26,34 @@ live : https://golpooo.vercel.app/
 - 🛡️ Protected backend routes and authentication middleware
 - 🌐 REST API with Express.js
 - ☁️ Cloud deployment ready with Docker and Render
+
+---
+
+## 📸 Status updates
+
+Statuses are images that stay up for 24 hours and are visible only to
+people you already chat with (a DM partner, or a member of a group you
+share). An unseen status puts a glowing orange ring around that person's
+avatar in the sidebar; opening it marks it seen and the ring goes grey.
+
+Expiry is enforced on every read, so a status is never served past its
+24 hours. Cleaning up the underlying ImageKit assets is a separate
+sweep (`backend/src/lib/statusCleanup.js`): it deletes each expired
+image from ImageKit and only then drops the database row, since the row
+holds the `fileId` the delete needs.
+
+- **On a normal server (Render, Docker, local):** nothing to configure.
+  The sweep runs every 10 minutes and once at startup.
+- **On serverless (Vercel):** no long-lived process means no in-process
+  cron, so point a scheduled job at `/api/status/cleanup` (GET or POST).
+  Set a `CRON_SECRET` env var and send it as `Authorization: Bearer
+  <CRON_SECRET>`; without that variable the endpoint returns 404 and is
+  effectively off. Hourly is plenty.
+
+If the sweep never runs at all, a TTL index still drops status rows
+seven days after expiry as a backstop — the app stays correct, but those
+ImageKit files would be left orphaned, which is what the sweep exists to
+prevent.
 
 ---
 

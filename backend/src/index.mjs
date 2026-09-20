@@ -7,12 +7,14 @@ import path from "path";
 import { clerkMiddleware } from "@clerk/express";
 
 import { connectDB } from "./lib/db.js";
-import job from "./lib/cron.js";
+import job, { statusCleanupJob } from "./lib/cron.js";
+import { cleanupExpiredStatusesFully } from "./lib/statusCleanup.js";
 
 import clerkWebhook from "./webhooks/clerk.webhook.js";
 import authRoutes from "./routes/auth.route.js";
 import messageRoutes from "./routes/message.route.js";
 import groupRoutes from "./routes/group.route.js";
+import statusRoutes from "./routes/status.route.js";
 
 import { app, server } from "./lib/socket.js";
 
@@ -172,11 +174,32 @@ if (process.env.VERCEL) {
     },
     groupRoutes
   );
+
+  app.use(
+    "/api/status",
+    async (req, res, next) => {
+      try {
+        await ensureDBConnection();
+        next();
+      } catch (error) {
+        console.error(
+          "MongoDB connection failed:",
+          error
+        );
+
+        return res.status(500).json({
+          error: "Database connection failed",
+        });
+      }
+    },
+    statusRoutes
+  );
 } else {
   // Render / Local
   app.use("/api/auth", authRoutes);
   app.use("/api/messages", messageRoutes);
   app.use("/api/groups", groupRoutes);
+  app.use("/api/status", statusRoutes);
 }
 
 // --------------------------------------------------
@@ -218,6 +241,14 @@ if (!process.env.VERCEL) {
       if (process.env.NODE_ENV === "production") {
         job.start();
       }
+
+      // Expired statuses leave images behind in ImageKit, so this sweep
+      // runs in every environment. One pass at boot clears whatever
+      // expired while the server was down, then every 10 minutes after.
+      statusCleanupJob.start();
+      cleanupExpiredStatusesFully().catch((error) =>
+        console.error("Initial status cleanup failed:", error.message),
+      );
     } catch (error) {
       console.error(
         "Database connection failed:",

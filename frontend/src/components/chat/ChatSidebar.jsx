@@ -4,13 +4,15 @@ import { formatLastMessagePreview, formatSidebarTime } from "../../lib/utils";
 import { useAuthStore } from "../../store/useAuthStore";
 import { useChatStore } from "../../store/useChatStore";
 import { useGroupStore } from "../../store/useGroupStore";
+import { useStatusStore } from "../../store/useStatusStore";
 import { APP_NAME, AppLogo } from "../AppLogo";
 import { UserButton } from "@clerk/react";
 
 import { Button, SearchField, Tabs } from "@heroui/react";
-import { MessageSquareIcon, PlusIcon, UsersIcon, Users2Icon } from "lucide-react";
+import { CircleDashedIcon, MessageSquareIcon, PlusIcon, UsersIcon, Users2Icon } from "lucide-react";
 import { ConversationRow } from "./ConversationRow";
 import { CreateGroupModal } from "./CreateGroupModal";
+import { StatusPanel } from "./StatusPanel";
 import { UserSearchPanel } from "./UserSearchPanel";
 
 // Builds the row's subtitle: "You: <preview>" when I sent the last
@@ -24,9 +26,12 @@ function buildSubtitle({ lastMessage, authUserId, fallback }) {
   return isMine ? `You: ${preview}` : preview;
 }
 
-function mapUserForList(user, onlineUsers, authUserId) {
+function mapUserForList(user, onlineUsers, authUserId, statusByUserId) {
+  const status = statusByUserId.get(String(user._id));
   return {
     conversationId: user._id,
+    hasStatus: Boolean(status),
+    hasUnseenStatus: Boolean(status?.hasUnseen),
     kind: "dm",
     lastActivityAt: user.lastMessageAt,
     id: user._id,
@@ -85,6 +90,9 @@ function ChatSidebar() {
   const setActiveGroupId = useGroupStore((state) => state.setActiveGroupId);
   const activeGroupCalls = useGroupStore((state) => state.activeGroupCalls);
 
+  const others = useStatusStore((state) => state.others);
+  const hasUnseenStatuses = others.some((bucket) => bucket.hasUnseen);
+
   const onlineUsers = useAuthStore((state) => state.onlineUsers);
   const authUserId = useAuthStore((state) => state.authUser?._id);
 
@@ -94,7 +102,13 @@ function ChatSidebar() {
 
   const normalizedSearchQuery = searchQuery.trim().toLowerCase();
 
-  const conversationUsers = conversations.map((user) => mapUserForList(user, onlineUsers, authUserId));
+  // Lookup so each DM row can tell whether that person has a live status
+  // (and whether I've watched it) without scanning the tray per row.
+  const statusByUserId = new Map(others.map((bucket) => [String(bucket.userId), bucket]));
+
+  const conversationUsers = conversations.map((user) =>
+    mapUserForList(user, onlineUsers, authUserId, statusByUserId),
+  );
   const groupItems = groups.map((group) =>
     mapGroupForList(group, activeGroupCalls[group._id], authUserId),
   );
@@ -143,8 +157,9 @@ function ChatSidebar() {
         className="sidebar-tabs flex min-h-0 flex-1 flex-col overflow-hidden"
       >
         {/* Filters the Chats/Groups lists. The Users tab has its own email
-            search inside the panel, so this bar would do nothing there. */}
-        {sidebarTab !== "users" ? (
+            search inside the panel, and the Status tray is a short list
+            of its own, so this bar would do nothing on either. */}
+        {sidebarTab !== "users" && sidebarTab !== "status" ? (
           <div className="sidebar-search shrink-0 border-b border-border px-3 pb-2 pt-2">
             <SearchField
               fullWidth
@@ -171,6 +186,17 @@ function ChatSidebar() {
             <Tabs.Tab id="groups" className="flex-1 justify-center gap-1.5">
               <Users2Icon className="size-3.5 opacity-80" aria-hidden />
               Groups
+            </Tabs.Tab>
+            <Tabs.Tab id="status" className="flex-1 justify-center gap-1.5">
+              <span className="relative flex items-center">
+                <CircleDashedIcon className="size-3.5 opacity-80" aria-hidden />
+                {/* A dot on the tab itself, so an unseen status is
+                    noticeable even while you're looking at another tab. */}
+                {hasUnseenStatuses ? (
+                  <span className="status-tab-dot absolute -right-1 -top-1 size-1.5 rounded-full" />
+                ) : null}
+              </span>
+              Status
             </Tabs.Tab>
             <Tabs.Tab id="users" className="flex-1 justify-center gap-1.5">
               <UsersIcon className="size-3.5 opacity-80" aria-hidden />
@@ -238,6 +264,13 @@ function ChatSidebar() {
               />
             ))
           )}
+        </Tabs.Panel>
+
+        <Tabs.Panel
+          id="status"
+          className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto outline-none"
+        >
+          <StatusPanel />
         </Tabs.Panel>
 
         <Tabs.Panel id="users" className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto outline-none">

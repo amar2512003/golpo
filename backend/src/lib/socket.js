@@ -57,6 +57,28 @@ function getReceiverSocketId(userId) {
   return sockets.values().next().value;
 }
 
+// Sends an event to *every* live socket a user has, unlike
+// getReceiverSocketId which picks an arbitrary one. Status updates are
+// passive background state (rings lighting up in the sidebar), so they
+// need to land on all of a person's open tabs/devices, not just one.
+function emitToUser(userId, event, payload) {
+  const sockets = userSocketMap[userId];
+  if (!sockets) return;
+  sockets.forEach((socketId) => io.to(socketId).emit(event, payload));
+}
+
+// Fans an event out to a list of users, skipping duplicates — used to
+// tell a poster's contacts that their status feed changed.
+function emitToUsers(userIds, event, payload) {
+  const seen = new Set();
+  (userIds || []).forEach((userId) => {
+    const key = String(userId);
+    if (seen.has(key)) return;
+    seen.add(key);
+    emitToUser(key, event, payload);
+  });
+}
+
 function getCallRoomId(groupId) {
   return `call:${groupId}`;
 }
@@ -508,6 +530,8 @@ export {
   server,
   io,
   getReceiverSocketId,
+  emitToUser,
+  emitToUsers,
   joinUserToGroupRooms,
   getCallParticipants,
   endCallForGroup,

@@ -1,6 +1,7 @@
 import { useChatStore } from "../store/useChatStore";
 import { useGroupStore } from "../store/useGroupStore";
 import { useTypingStore } from "../store/useTypingStore";
+import { useStatusStore } from "../store/useStatusStore";
 import { useSelectedConversation } from "../hooks/useSelectedConversation";
 import { useEffect } from "react";
 import ChatSidebar from "../components/chat/ChatSidebar";
@@ -10,6 +11,7 @@ import { ChatComposer } from "../components/chat/ChatComposer";
 import { VideoCallModal } from "../components/chat/VideoCallModal";
 import { GroupCallModal } from "../components/chat/GroupCallModal";
 import { GroupCallBanner } from "../components/chat/GroupCallBanner";
+import { StatusViewerModal } from "../components/chat/StatusViewerModal";
 
 function ChatPage() {
   const getConversations = useChatStore((state) => state.getConversations);
@@ -37,13 +39,39 @@ function ChatPage() {
   const subscribeToTyping = useTypingStore((state) => state.subscribeToTyping);
   const unsubscribeFromTyping = useTypingStore((state) => state.unsubscribeFromTyping);
 
+  const getStatuses = useStatusStore((state) => state.getStatuses);
+  const subscribeToStatusEvents = useStatusStore((state) => state.subscribeToStatusEvents);
+  const unsubscribeFromStatusEvents = useStatusStore((state) => state.unsubscribeFromStatusEvents);
+  const pruneExpiredStatuses = useStatusStore((state) => state.pruneExpiredStatuses);
+
   const { activeConversation, activeConversationId, activeConversationType, isLargeScreen } =
     useSelectedConversation();
 
   useEffect(() => {
     getConversations();
     getGroups();
-  }, [getConversations, getGroups]);
+    getStatuses();
+  }, [getConversations, getGroups, getStatuses]);
+
+  // Statuses arrive and expire independently of whichever chat is open,
+  // so this runs once per session alongside the other global listeners.
+  useEffect(() => {
+    subscribeToStatusEvents();
+    return () => unsubscribeFromStatusEvents();
+  }, [subscribeToStatusEvents, unsubscribeFromStatusEvents]);
+
+  // A status is only live for 24 hours. The server won't serve an expired
+  // one, but a tab left open overnight would still be holding the old
+  // list — so drop anything past its window locally each minute, and
+  // re-sync with the server every so often to pick up what's still there.
+  useEffect(() => {
+    const pruneTimer = setInterval(() => pruneExpiredStatuses(), 60 * 1000);
+    const refreshTimer = setInterval(() => getStatuses(), 10 * 60 * 1000);
+    return () => {
+      clearInterval(pruneTimer);
+      clearInterval(refreshTimer);
+    };
+  }, [pruneExpiredStatuses, getStatuses]);
 
   // Roster/membership events (create/update/delete/removed/left) apply no
   // matter which thread is open, so this subscribes once per session.
@@ -116,6 +144,7 @@ function ChatPage() {
 
       <VideoCallModal />
       <GroupCallModal />
+      <StatusViewerModal />
     </>
   );
 }

@@ -1,6 +1,7 @@
 import { Avatar } from "@heroui/react";
 import { PhoneIcon, VideoIcon } from "lucide-react";
 import { AvatarWithOnlineIndicator } from "./AvatarWithOnlineIndicator";
+import { StatusRing } from "./StatusRing";
 
 export function ConversationRow({ user, selected, onSelect }) {
   const showOnlineIndicator = user.showOnlineIndicator ?? true;
@@ -8,11 +9,17 @@ export function ConversationRow({ user, selected, onSelect }) {
   const unreadCount = user.unreadCount || 0;
   const hasUnread = unreadCount > 0;
 
+  // A live status puts a ring around this person's avatar — glowing
+  // orange while any of it is still unseen, flat grey once it's watched.
+  // The ring is decorative here (the whole row is already a button, so it
+  // can't hold one of its own); the Status tab is where you open a reel.
   const avatar = (
-    <Avatar className="size-12 shrink-0">
-      <Avatar.Image alt={user.name} src={user.avatarUrl} />
-      <Avatar.Fallback className="text-sm font-medium">{user.initials}</Avatar.Fallback>
-    </Avatar>
+    <StatusRing hasStatus={user.hasStatus} hasUnseen={user.hasUnseenStatus}>
+      <Avatar className="size-12 shrink-0">
+        <Avatar.Image alt={user.name} src={user.avatarUrl} />
+        <Avatar.Fallback className="text-sm font-medium">{user.initials}</Avatar.Fallback>
+      </Avatar>
+    </StatusRing>
   );
 
   return (

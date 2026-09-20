@@ -67,6 +67,33 @@ export function formatSidebarTime(date) {
   });
 }
 
+// Short "how long ago" label for a status. Statuses only live 24 hours,
+// so this never has to reach past "23h ago" — anything older is already
+// gone by the time it would be rendered.
+export function formatTimeAgo(date) {
+  if (!date) return "";
+  const elapsedMs = Date.now() - new Date(date).getTime();
+  const minutes = Math.floor(elapsedMs / 60000);
+
+  if (minutes < 1) return "Just now";
+  if (minutes < 60) return `${minutes}m ago`;
+
+  const hours = Math.floor(minutes / 60);
+  return `${hours}h ago`;
+}
+
+// How much of a status's 24 hours is left, as a short label for the
+// owner's own view ("Disappears in 7h").
+export function formatTimeLeft(expiresAt) {
+  if (!expiresAt) return "";
+  const remainingMs = new Date(expiresAt).getTime() - Date.now();
+  if (remainingMs <= 0) return "Expired";
+
+  const minutes = Math.ceil(remainingMs / 60000);
+  if (minutes < 60) return `${minutes}m left`;
+  return `${Math.floor(minutes / 60)}h left`;
+}
+
 // Turns a conversation's lastMessage (DM or group, same shape from the
 // backend) into the one-line snippet shown under the name in the sidebar.
 export function formatLastMessagePreview(lastMessage) {
