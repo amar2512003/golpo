@@ -219,9 +219,10 @@ function GifsTab({ onSelectGif }) {
   );
 }
 
-export function EmojiPicker({ onSelectEmoji, onSelectSticker, onSelectGif, onClose }) {
+export function EmojiPicker({ onSelectEmoji, onSelectSticker, onSelectGif, onClose, emojiOnly = false }) {
   const [activeTab, setActiveTab] = useState("emoji");
   const panelRef = useRef(null);
+  const visibleTabs = emojiOnly ? TABS.filter((tab) => tab.id === "emoji") : TABS;
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -262,7 +263,7 @@ export function EmojiPicker({ onSelectEmoji, onSelectSticker, onSelectGif, onClo
       aria-label="Emoji picker"
     >
       <div className="flex shrink-0 items-center gap-1 border-b border-border p-1.5">
-        {TABS.map(({ id, label, Icon }) => (
+        {visibleTabs.map(({ id, label, Icon }) => (
           <button
             key={id}
             type="button"

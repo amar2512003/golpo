@@ -17,6 +17,7 @@ import { ThemeToggle } from "../ThemeToggle";
 
 import { useChatStore } from "../../store/useChatStore";
 import { useGroupStore } from "../../store/useGroupStore";
+import { useAiChatStore } from "../../store/useAiChatStore";
 import { useCallStore } from "../../store/useCallStore";
 import { useGroupCallStore } from "../../store/useGroupCallStore";
 import { useSelectedConversation } from "../../hooks/useSelectedConversation";
@@ -52,6 +53,7 @@ export function ChatHeader() {
   const setActiveConversationId = useChatStore((state) => state.setActiveConversationId);
   const setSoundEnabled = useChatStore((state) => state.setSoundEnabled);
   const clearActiveGroup = useGroupStore((state) => state.clearActiveGroup);
+  const closeAiChat = useAiChatStore((state) => state.closeAiChat);
   const startCall = useCallStore((state) => state.startCall);
   const groupCallStatus = useGroupCallStore((state) => state.status);
   const activeGroupCallId = useGroupCallStore((state) => state.groupId);
@@ -59,10 +61,12 @@ export function ChatHeader() {
 
   const { activeConversation, activeConversationType, isLargeScreen } = useSelectedConversation();
   const isGroup = activeConversationType === "group";
+  const isAi = activeConversationType === "ai";
 
   const closeActiveThread = () => {
     setIsGroupInfoOpen(false);
-    if (isGroup) clearActiveGroup();
+    if (isAi) closeAiChat();
+    else if (isGroup) clearActiveGroup();
     else setActiveConversationId(null);
   };
 
@@ -176,6 +180,8 @@ export function ChatHeader() {
               <p className="truncate text-xs text-muted">
                 {isGroup ? (
                   activeConversation.peer.subtitle
+                ) : isAi ? (
+                  <span className="font-medium text-success">{activeConversation.peer.subtitle}</span>
                 ) : activeConversation.peer.isOnline ? (
                   <span className="font-medium text-success">Online</span>
                 ) : (
@@ -221,7 +227,7 @@ export function ChatHeader() {
           )}
         </Button>
 
-        {activeConversation && !isGroup ? (
+        {activeConversation && !isGroup && !isAi ? (
           <>
             <Button
               variant="ghost"

@@ -569,6 +569,9 @@ export const useGroupStore = create((set, get) => ({
       import("./useChatStore").then(({ useChatStore }) => {
         useChatStore.getState().setActiveConversationId(null);
       });
+      import("./useAiChatStore").then(({ useAiChatStore }) => {
+        useAiChatStore.getState().closeAiChat();
+      });
     }
     set({ activeGroupId: groupId, groupMessages: [] });
   },

@@ -12,6 +12,7 @@ import useKeyboardSound from "../../hooks/useKeyboardSound";
 import { formatDuration, useVoiceRecorder } from "../../hooks/useVoiceRecorder";
 import { useChatStore } from "../../store/useChatStore";
 import { useGroupStore } from "../../store/useGroupStore";
+import { useAiChatStore } from "../../store/useAiChatStore";
 import { useSelectedConversation } from "../../hooks/useSelectedConversation";
 import { useTypingEmitter } from "../../hooks/useTypingEmitter";
 import { EmojiPicker } from "./EmojiPicker";
@@ -41,10 +42,15 @@ export function ChatComposer() {
   const sendGroupLocationMessage = useGroupStore((state) => state.sendGroupLocationMessage);
   const sendGroupPollMessage = useGroupStore((state) => state.sendGroupPollMessage);
 
+  const sendAiMessage = useAiChatStore((state) => state.sendAiMessage);
+
   const { activeConversationId, activeConversationType } = useSelectedConversation();
+  const isAi = activeConversationType === "ai";
   const { playRandomKeyStrokeSound } = useKeyboardSound();
   const { notifyTyping, stopTyping } = useTypingEmitter({
-    conversationId: activeConversationId,
+    // The AI thread has no socket presence on the other end, so there's
+    // nothing to notify.
+    conversationId: isAi ? null : activeConversationId,
     isGroup: activeConversationType === "group",
   });
   const mediaInputRef = useRef(null);
@@ -56,7 +62,7 @@ export function ChatComposer() {
   const [isSendingLocation, setIsSendingLocation] = useState(false);
 
   const isGroup = activeConversationType === "group";
-  const isSending = isGroup ? isSendingGroupMedia : isSendingMedia;
+  const isSending = isGroup ? isSendingGroupMedia : isAi ? false : isSendingMedia;
 
   const playSoundIfEnabled = () => {
     if (isSoundEnabled) playRandomKeyStrokeSound();
@@ -89,7 +95,9 @@ export function ChatComposer() {
 
     const didSendMessage = isGroup
       ? await sendGroupTextMessage(activeConversationId, composerText)
-      : await sendTextMessage(activeConversationId);
+      : isAi
+        ? await sendAiMessage(composerText)
+        : await sendTextMessage(activeConversationId);
 
     if (didSendMessage) {
       setComposerText("");
@@ -228,32 +236,34 @@ export function ChatComposer() {
             aria-hidden
             onChange={handleMediaPick}
           />
-          <div className="relative shrink-0 self-end">
-            {isAttachmentMenuOpen ? (
-              <AttachmentMenu
-                onClose={() => setIsAttachmentMenuOpen(false)}
-                onPhoto={() => mediaInputRef.current?.click()}
-                onCamera={() => cameraInputRef.current?.click()}
-                onLocation={handleSendLocation}
-                onPoll={() => setIsPollModalOpen(true)}
-              />
-            ) : null}
-            <Button
-              variant="ghost"
-              isIconOnly
-              isDisabled={isSending || isSendingLocation}
-              aria-pressed={isAttachmentMenuOpen}
-              aria-label="Add attachment"
-              className="size-9 shrink-0 touch-manipulation text-accent"
-              onPress={() => setIsAttachmentMenuOpen((open) => !open)}
-            >
-              {isSendingLocation ? (
-                <LoaderIcon className="size-5 animate-spin sm:size-6" strokeWidth={2} aria-hidden />
-              ) : (
-                <PaperclipIcon className="size-5 sm:size-6" strokeWidth={2} aria-hidden />
-              )}
-            </Button>
-          </div>
+          {!isAi ? (
+            <div className="relative shrink-0 self-end">
+              {isAttachmentMenuOpen ? (
+                <AttachmentMenu
+                  onClose={() => setIsAttachmentMenuOpen(false)}
+                  onPhoto={() => mediaInputRef.current?.click()}
+                  onCamera={() => cameraInputRef.current?.click()}
+                  onLocation={handleSendLocation}
+                  onPoll={() => setIsPollModalOpen(true)}
+                />
+              ) : null}
+              <Button
+                variant="ghost"
+                isIconOnly
+                isDisabled={isSending || isSendingLocation}
+                aria-pressed={isAttachmentMenuOpen}
+                aria-label="Add attachment"
+                className="size-9 shrink-0 touch-manipulation text-accent"
+                onPress={() => setIsAttachmentMenuOpen((open) => !open)}
+              >
+                {isSendingLocation ? (
+                  <LoaderIcon className="size-5 animate-spin sm:size-6" strokeWidth={2} aria-hidden />
+                ) : (
+                  <PaperclipIcon className="size-5 sm:size-6" strokeWidth={2} aria-hidden />
+                )}
+              </Button>
+            </div>
+          ) : null}
 
           <div className="relative shrink-0 self-end">
             {isEmojiPickerOpen ? (
@@ -262,6 +272,7 @@ export function ChatComposer() {
                 onSelectSticker={handleSelectSticker}
                 onSelectGif={handleSelectGif}
                 onClose={() => setIsEmojiPickerOpen(false)}
+                emojiOnly={isAi}
               />
             ) : null}
             <Button
@@ -295,6 +306,15 @@ export function ChatComposer() {
 
           {composerText.trim() ? (
             <Button variant="primary" isIconOnly onPress={handleSend}>
+              <SendHorizontalIcon className="size-5" />
+            </Button>
+          ) : isAi ? (
+            <Button
+              variant="primary"
+              isIconOnly
+              isDisabled
+              aria-label="Type a message to send"
+            >
               <SendHorizontalIcon className="size-5" />
             </Button>
           ) : (

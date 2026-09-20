@@ -16,6 +16,7 @@ import authRoutes from "./routes/auth.route.js";
 import messageRoutes from "./routes/message.route.js";
 import groupRoutes from "./routes/group.route.js";
 import statusRoutes from "./routes/status.route.js";
+import aiRoutes from "./routes/ai.route.js";
 
 import { app, server } from "./lib/socket.js";
 
@@ -200,12 +201,33 @@ if (process.env.VERCEL) {
     },
     statusRoutes
   );
+
+  app.use(
+    "/api/ai",
+    async (req, res, next) => {
+      try {
+        await ensureDBConnection();
+        next();
+      } catch (error) {
+        console.error(
+          "MongoDB connection failed:",
+          error
+        );
+
+        return res.status(500).json({
+          error: "Database connection failed",
+        });
+      }
+    },
+    aiRoutes
+  );
 } else {
   // Render / Local
   app.use("/api/auth", authRoutes);
   app.use("/api/messages", messageRoutes);
   app.use("/api/groups", groupRoutes);
   app.use("/api/status", statusRoutes);
+  app.use("/api/ai", aiRoutes);
 }
 
 // --------------------------------------------------

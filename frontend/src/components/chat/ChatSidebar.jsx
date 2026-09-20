@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { getInitials, useSelectedConversation } from "../../hooks/useSelectedConversation";
+import { AI_CONVERSATION_ID, getInitials, useSelectedConversation } from "../../hooks/useSelectedConversation";
 import { formatLastMessagePreview, formatSidebarTime } from "../../lib/utils";
 import { useAuthStore } from "../../store/useAuthStore";
+import { useAiChatStore } from "../../store/useAiChatStore";
 import { useChatStore } from "../../store/useChatStore";
 import { useGroupStore } from "../../store/useGroupStore";
 import { useStatusStore } from "../../store/useStatusStore";
@@ -76,6 +77,31 @@ function mapGroupForList(group, liveCall, authUserId) {
   };
 }
 
+// The AI row is pinned above every real conversation, so it's built by
+// hand rather than going through mapUserForList/mapGroupForList — there's
+// no user or group document behind it, just useAiChatStore's own state.
+function buildAiListItem(aiMessages) {
+  const lastMessage = aiMessages.at(-1);
+  const subtitle = lastMessage
+    ? lastMessage.role === "user"
+      ? `You: ${lastMessage.content}`
+      : lastMessage.content
+    : "Ask me anything";
+
+  return {
+    id: AI_CONVERSATION_ID,
+    kind: "ai",
+    name: "AI Assistant",
+    avatarUrl: null,
+    initials: "AI",
+    isOnline: true,
+    subtitle,
+    isSubtitleUnread: false,
+    unreadCount: 0,
+    timestamp: lastMessage ? formatSidebarTime(lastMessage.createdAt) : "",
+  };
+}
+
 function ChatSidebar() {
   const conversations = useChatStore((state) => state.conversations);
 
@@ -100,9 +126,18 @@ function ChatSidebar() {
 
   const { activeConversationId, activeConversationType, isLargeScreen } = useSelectedConversation();
 
+  const aiMessages = useAiChatStore((state) => state.messages);
+  const openAiChat = useAiChatStore((state) => state.openAiChat);
+
   const [isCreateGroupOpen, setIsCreateGroupOpen] = useState(false);
 
   const normalizedSearchQuery = searchQuery.trim().toLowerCase();
+
+  const aiListItem = buildAiListItem(aiMessages);
+  // Search still works against the AI row (typing "ai" keeps it visible),
+  // it just never gets pushed out of the Chats tab by unrelated activity.
+  const showAiRow =
+    !normalizedSearchQuery || aiListItem.name.toLowerCase().includes(normalizedSearchQuery);
 
   // Lookup so each DM row can tell whether that person has a live status
   // (and whether I've watched it) without scanning the tray per row.
@@ -208,10 +243,21 @@ function ChatSidebar() {
           id="chats"
           className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto outline-none"
         >
+          {showAiRow ? (
+            <ConversationRow
+              key="ai-assistant"
+              user={aiListItem}
+              selected={activeConversationType === "ai"}
+              onSelect={openAiChat}
+            />
+          ) : null}
+
           {filteredChats.length === 0 ? (
-            <p className="px-4 py-6 text-center text-sm text-muted">
-              No conversations match your search.
-            </p>
+            showAiRow ? null : (
+              <p className="px-4 py-6 text-center text-sm text-muted">
+                No conversations match your search.
+              </p>
+            )
           ) : (
             filteredChats.map((chat) =>
               chat.kind === "group" ? (

@@ -3,6 +3,37 @@ import { formatMessageTime } from "../lib/utils";
 import { useChatStore } from "../store/useChatStore";
 import { useGroupStore } from "../store/useGroupStore";
 import { useAuthStore } from "../store/useAuthStore";
+import { useAiChatStore } from "../store/useAiChatStore";
+
+export const AI_CONVERSATION_ID = "ai-assistant";
+
+// The AI thread isn't a user or a group document — it's rendered straight
+// from useAiChatStore's own message list, already in the "me"/"them" shape
+// the rest of the chat UI expects.
+function mapAiToConversation({ messages }) {
+  const mappedMessages = messages.map((message) => ({
+    id: message.id,
+    role: message.role === "user" ? "me" : "them",
+    text: message.content,
+    time: formatMessageTime(message.createdAt),
+    createdAt: message.createdAt,
+  }));
+
+  return {
+    id: AI_CONVERSATION_ID,
+    isGroup: false,
+    isAi: true,
+    peer: {
+      _id: AI_CONVERSATION_ID,
+      name: "AI Assistant",
+      subtitle: "Powered by Groq",
+      isOnline: true,
+      avatarUrl: null,
+      initials: "AI",
+    },
+    messages: mappedMessages,
+  };
+}
 
 // John Doe -> JD
 export function getInitials(name) {
@@ -117,7 +148,19 @@ export function useSelectedConversation() {
   const authUser = useAuthStore((state) => state.authUser);
   const onlineUsers = useAuthStore((state) => state.onlineUsers);
 
+  const isAiActive = useAiChatStore((state) => state.isActive);
+  const aiMessages = useAiChatStore((state) => state.messages);
+
   const isLargeScreen = useMediaQuery("(min-width: 1024px)");
+
+  if (isAiActive) {
+    return {
+      activeConversation: mapAiToConversation({ messages: aiMessages }),
+      activeConversationId: AI_CONVERSATION_ID,
+      activeConversationType: "ai",
+      isLargeScreen,
+    };
+  }
 
   if (activeGroupId) {
     const group = groups.find((g) => g._id === activeGroupId);

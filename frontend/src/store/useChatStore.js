@@ -266,6 +266,9 @@ export const useChatStore = create(
           import("./useGroupStore").then(({ useGroupStore }) => {
             useGroupStore.getState().clearActiveGroup();
           });
+          import("./useAiChatStore").then(({ useAiChatStore }) => {
+            useAiChatStore.getState().closeAiChat();
+          });
         }
 
         set((state) => ({

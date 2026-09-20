@@ -9,6 +9,7 @@ import {
 } from "../../store/useTypingStore";
 import { NoConversationPlaceholder } from "./NoConversationPlaceholder";
 import { useSelectedConversation } from "../../hooks/useSelectedConversation";
+import { useAiChatStore } from "../../store/useAiChatStore";
 import { formatMessageDate, getDayKey } from "../../lib/utils";
 
 // Splits a flat message list into contiguous same-day runs, each tagged
@@ -51,23 +52,30 @@ export function MessageList() {
   const messagesScrollRef = useScrollToBottom(activeConversationId, lastMessageId);
 
   const isGroup = activeConversationType === "group";
+  const isAi = activeConversationType === "ai";
   const typingKey = activeConversationId
     ? isGroup
       ? getGroupTypingKey(activeConversationId)
       : getDmTypingKey(activeConversationId)
     : null;
   const typingUserIds = useTypingStore((state) => state.typing[typingKey]) ?? NO_TYPERS;
+  const isAiTyping = useAiChatStore((state) => state.isTyping);
 
   // In a DM the typer is always the peer; in a group, look up each typer's
   // first name from the member list (anyone no longer a member is skipped).
-  const typingNames = isGroup
-    ? typingUserIds
-        .map((id) => activeConversation?.members?.find((member) => String(member._id) === id))
-        .filter(Boolean)
-        .map((member) => member.fullName.split(" ")[0])
-    : typingUserIds.length > 0 && activeConversation
-      ? [activeConversation.peer.name]
-      : [];
+  // The AI thread has its own loading flag instead of socket typing events.
+  const typingNames = isAi
+    ? isAiTyping
+      ? [activeConversation?.peer.name ?? "AI Assistant"]
+      : []
+    : isGroup
+      ? typingUserIds
+          .map((id) => activeConversation?.members?.find((member) => String(member._id) === id))
+          .filter(Boolean)
+          .map((member) => member.fullName.split(" ")[0])
+      : typingUserIds.length > 0 && activeConversation
+        ? [activeConversation.peer.name]
+        : [];
   const isSomeoneTyping = typingNames.length > 0;
 
   // Bring the indicator into view when it appears — but only if the reader
