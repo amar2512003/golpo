@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { Avatar, Button } from "@heroui/react";
-import { PhoneOffIcon, PhoneIcon, ScreenShareIcon, ScreenShareOffIcon } from "lucide-react";
+import { PhoneOffIcon, PhoneIcon, ScreenShareIcon, ScreenShareOffIcon, SwitchCameraIcon } from "lucide-react";
 import { useCallStore } from "../../store/useCallStore";
 import { canShareScreen } from "../../lib/screenShare";
+import { useCanFlipCamera } from "../../hooks/useCanFlipCamera";
 
 function formatDuration(totalSeconds) {
   const m = Math.floor(totalSeconds / 60).toString().padStart(2, "0");
@@ -28,18 +29,21 @@ function CallerAvatar({ name, avatarUrl, pulsing, large }) {
   );
 }
 
-function CallButton({ onPress, variant, label, active, children }) {
+function CallButton({ onPress, variant, label, active, disabled, children }) {
   let tone = "bg-red-500 hover:bg-red-400";
   if (variant === "accept") tone = "bg-emerald-500 hover:bg-emerald-400";
+  // "toggle" stays lit while on; "action" is a one-shot button (flip camera).
   if (variant === "toggle") {
     tone = active ? "bg-[#5b6dfa] hover:bg-[#7180fb]" : "bg-white/10 hover:bg-white/20 backdrop-blur-md";
   }
+  if (variant === "action") tone = "bg-white/10 hover:bg-white/20 backdrop-blur-md";
 
   return (
     <div className="flex flex-col items-center gap-2">
       <Button
         isIconOnly
         onPress={onPress}
+        isDisabled={disabled}
         aria-label={label}
         aria-pressed={variant === "toggle" ? !!active : undefined}
         className={`h-14 w-14 rounded-full text-white shadow-lg shadow-black/30 ${tone}`}
@@ -64,6 +68,8 @@ export function VideoCallModal() {
   const remoteSharing = useCallStore((state) => state.remoteSharing);
   const startScreenShare = useCallStore((state) => state.startScreenShare);
   const stopScreenShare = useCallStore((state) => state.stopScreenShare);
+  const flipCamera = useCallStore((state) => state.flipCamera);
+  const isFlippingCamera = useCallStore((state) => state.isFlippingCamera);
 
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
@@ -75,6 +81,10 @@ export function VideoCallModal() {
   // An audio call flips to the video layout while the other person is
   // presenting, so their screen has somewhere to render.
   const showVideoLayout = isVideo || remoteSharing;
+
+  // Offer "Flip camera" only on a video call that has our camera open and
+  // a second camera to flip to (i.e. phones, or a laptop with two webcams).
+  const canFlipCamera = useCanFlipCamera(isVideo && !!localStream);
 
   useEffect(() => {
     if (localVideoRef.current && localStream) {
@@ -212,6 +222,17 @@ export function VideoCallModal() {
           </>
         ) : (
           <>
+            {canFlipCamera ? (
+              <CallButton
+                onPress={flipCamera}
+                variant="action"
+                disabled={isFlippingCamera}
+                label="Flip camera"
+              >
+                <SwitchCameraIcon className={`size-6 ${isFlippingCamera ? "animate-pulse" : ""}`} />
+              </CallButton>
+            ) : null}
+
             {callStatus === "connected" && canShareScreen() ? (
               <CallButton
                 onPress={isScreenSharing ? stopScreenShare : startScreenShare}

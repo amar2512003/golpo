@@ -6,6 +6,7 @@ import {
   PhoneOffIcon,
   ScreenShareIcon,
   ScreenShareOffIcon,
+  SwitchCameraIcon,
   VideoIcon,
   VideoOffIcon,
 } from "lucide-react";
@@ -14,6 +15,7 @@ import { useGroupStore } from "../../store/useGroupStore";
 import { useAuthStore } from "../../store/useAuthStore";
 import { getInitials } from "../../hooks/useSelectedConversation";
 import { canShareScreen } from "../../lib/screenShare";
+import { useCanFlipCamera } from "../../hooks/useCanFlipCamera";
 
 // Literal Tailwind class strings — Tailwind's build only picks up class
 // names it can see verbatim in source, so this can't be built from a
@@ -145,7 +147,7 @@ function CallTile({
   );
 }
 
-function CallControlButton({ onPress, active, tone = "danger", label, children }) {
+function CallControlButton({ onPress, active, disabled, tone = "danger", label, children }) {
   const activeClass = tone === "accent" ? "bg-[#5b6dfa] text-white" : "bg-red-500 text-white";
 
   return (
@@ -153,6 +155,7 @@ function CallControlButton({ onPress, active, tone = "danger", label, children }
       <Button
         isIconOnly
         onPress={onPress}
+        isDisabled={disabled}
         aria-label={label}
         className={`h-12 w-12 rounded-full backdrop-blur-md ${
           active ? activeClass : "bg-white/10 text-white hover:bg-white/20"
@@ -180,6 +183,8 @@ export function GroupCallModal() {
   const toggleCamera = useGroupCallStore((state) => state.toggleCamera);
   const startScreenShare = useGroupCallStore((state) => state.startScreenShare);
   const stopScreenShare = useGroupCallStore((state) => state.stopScreenShare);
+  const flipCamera = useGroupCallStore((state) => state.flipCamera);
+  const isFlippingCamera = useGroupCallStore((state) => state.isFlippingCamera);
   const leaveCall = useGroupCallStore((state) => state.leaveCall);
 
   const groups = useGroupStore((state) => state.groups);
@@ -189,6 +194,10 @@ export function GroupCallModal() {
   // Which presenter the viewer chose to watch when more than one person
   // is sharing at once. Ignored once that person stops presenting.
   const [pinnedId, setPinnedId] = useState(null);
+
+  // Offer "Flip camera" only on a video call that has our camera open and
+  // a second camera to flip to (i.e. phones, or a laptop with two webcams).
+  const canFlipCamera = useCanFlipCamera(callType === "video" && !!localStream);
 
   useEffect(() => {
     if (status !== "in-call") {
@@ -355,6 +364,17 @@ export function GroupCallModal() {
             label={localCameraOff ? "Start video" : "Stop video"}
           >
             {localCameraOff ? <VideoOffIcon className="size-5" /> : <VideoIcon className="size-5" />}
+          </CallControlButton>
+        ) : null}
+
+        {canFlipCamera ? (
+          <CallControlButton
+            onPress={flipCamera}
+            // Nothing to flip while the camera is switched off.
+            disabled={isFlippingCamera || localCameraOff}
+            label="Flip camera"
+          >
+            <SwitchCameraIcon className={`size-5 ${isFlippingCamera ? "animate-pulse" : ""}`} />
           </CallControlButton>
         ) : null}
 

@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import toast from "react-hot-toast";
 import { useAuthStore } from "./useAuthStore";
+import { switchCameraTrack } from "../lib/camera";
 import {
   attachLocalMedia,
   canShareScreen,
@@ -29,6 +30,10 @@ export const useCallStore = create((set, get) => ({
   isScreenSharing: false,
   screenStream: null,
   remoteSharing: false, // the other person is currently presenting
+
+  // True while a front/back camera switch is in flight, so a double-tap
+  // can't start a second one on top of the first.
+  isFlippingCamera: false,
 
   startCall: async (targetUser, callType = "video") => {
     const socket = useAuthStore.getState().socket;
@@ -199,6 +204,62 @@ export const useCallStore = create((set, get) => ({
     get().resetCall();
   },
 
+  // ---------------- Camera flip ----------------
+
+  // Switches between the front and back camera (or the next webcam) mid-call.
+  // The new track is swapped into the video sender with replaceTrack() — no
+  // renegotiation — and `localStream` is replaced by a fresh MediaStream so
+  // the self-view re-attaches to the new picture.
+  flipCamera: async () => {
+    const { localStream, isFlippingCamera } = get();
+    const oldTrack = localStream?.getVideoTracks()[0];
+
+    if (!oldTrack || isFlippingCamera) return;
+
+    set({ isFlippingCamera: true });
+
+    let result;
+    try {
+      result = await switchCameraTrack(oldTrack);
+    } catch (err) {
+      console.error("Error switching camera:", err);
+      toast.error("Couldn't switch camera");
+      set({ isFlippingCamera: false });
+      return;
+    }
+
+    const { track, switched } = result;
+    if (!switched) toast.error("Couldn't switch camera");
+
+    // The call ended while the new camera was opening.
+    if (get().localStream !== localStream) {
+      track.stop();
+      return;
+    }
+
+    // While presenting, the sender is carrying the screen — leave it
+    // alone. The new camera is picked up when sharing stops.
+    const { peerConnection, isScreenSharing } = get();
+    const sender = peerConnection && !isScreenSharing ? getVideoSender(peerConnection) : null;
+
+    try {
+      await sender?.replaceTrack(track);
+    } catch (err) {
+      console.error("Error sending new camera track:", err);
+      toast.error("Couldn't switch camera");
+    }
+
+    if (get().localStream !== localStream) {
+      track.stop();
+      return;
+    }
+
+    set({
+      localStream: new MediaStream([...localStream.getAudioTracks(), track]),
+      isFlippingCamera: false,
+    });
+  },
+
   // ---------------- Screen sharing ----------------
 
   // Swaps the screen into the existing video sender with replaceTrack().
@@ -326,6 +387,7 @@ export const useCallStore = create((set, get) => ({
       isScreenSharing: false,
       screenStream: null,
       remoteSharing: false,
+      isFlippingCamera: false,
     });
   },
 }));

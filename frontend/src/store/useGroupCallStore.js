@@ -9,6 +9,7 @@ import {
   resolveRemoteStream,
   stopStream,
 } from "../lib/screenShare";
+import { switchCameraTrack } from "../lib/camera";
 
 const ICE_SERVERS = {
   iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
@@ -136,6 +137,10 @@ export const useGroupCallStore = create((set, get) => ({
   localMuted: false,
   localCameraOff: false,
   localSpeaking: false,
+
+  // True while a front/back camera switch is in flight, so a double-tap
+  // can't start a second one on top of the first.
+  isFlippingCamera: false,
 
   // Screen sharing. The camera track stays in `localStream` the whole
   // time — while presenting we only swap what each peer connection is
@@ -397,6 +402,69 @@ export const useGroupCallStore = create((set, get) => ({
       groupId,
       muted: get().localMuted,
       cameraOff: !localCameraOff,
+    });
+  },
+
+  // Switches between the front and back camera (or the next webcam) mid-call.
+  // Mesh version: the new track goes into *each* peer connection's video
+  // sender via replaceTrack(), so nothing is renegotiated and nothing goes
+  // over the signaling socket. `localStream` becomes a fresh MediaStream so
+  // our own tile re-attaches to the new picture.
+  flipCamera: async () => {
+    const { localStream, isFlippingCamera, callType } = get();
+    const oldTrack = localStream?.getVideoTracks()[0];
+
+    if (callType !== "video" || !oldTrack || isFlippingCamera) return;
+
+    set({ isFlippingCamera: true });
+
+    let result;
+    try {
+      result = await switchCameraTrack(oldTrack);
+    } catch (err) {
+      console.error("Error switching camera:", err);
+      toast.error("Couldn't switch camera");
+      set({ isFlippingCamera: false });
+      return;
+    }
+
+    const { track, switched } = result;
+    if (!switched) toast.error("Couldn't switch camera");
+
+    // The call ended while the new camera was opening.
+    if (get().localStream !== localStream) {
+      track.stop();
+      return;
+    }
+
+    // A camera that was switched off stays off after the flip.
+    track.enabled = !get().localCameraOff;
+
+    // While presenting, each sender is carrying the screen — leave them
+    // alone. The new camera is picked up when sharing stops.
+    if (!get().localSharingScreen) {
+      const results = await Promise.allSettled(
+        Array.from(peerConnections.values()).map(({ pc }) => getVideoSender(pc)?.replaceTrack(track))
+      );
+
+      results.forEach((outcome) => {
+        if (outcome.status === "rejected") {
+          console.error("Error sending new camera track to a peer:", outcome.reason);
+        }
+      });
+    }
+
+    if (get().localStream !== localStream) {
+      track.stop();
+      return;
+    }
+
+    // The camera may have been switched off/on while we were swapping.
+    track.enabled = !get().localCameraOff;
+
+    set({
+      localStream: new MediaStream([...localStream.getAudioTracks(), track]),
+      isFlippingCamera: false,
     });
   },
 
@@ -678,6 +746,7 @@ export const useGroupCallStore = create((set, get) => ({
       localMuted: false,
       localCameraOff: false,
       localSpeaking: false,
+      isFlippingCamera: false,
       localSharingScreen: false,
       screenStream: null,
       peers: {},
