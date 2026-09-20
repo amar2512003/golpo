@@ -46,7 +46,7 @@ export function MessageBubble({ message, isGroup }) {
   const hasImage = Boolean(message.imageUrl);
   const hasVideo = Boolean(message.videoUrl);
   const hasAudio = Boolean(message.audioUrl);
-  const hasPoll = Boolean(message.poll);
+  const hasPoll = Boolean(message.poll?.question) && (message.poll?.options?.length ?? 0) > 0;
   const isSticker =
     !hasImage &&
     !hasVideo &&

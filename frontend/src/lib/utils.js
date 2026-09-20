@@ -71,7 +71,7 @@ export function formatSidebarTime(date) {
 // backend) into the one-line snippet shown under the name in the sidebar.
 export function formatLastMessagePreview(lastMessage) {
   if (!lastMessage) return "";
-  if (lastMessage.poll) return "📊 Poll";
+  if (lastMessage.poll?.question) return "📊 Poll";
   if (lastMessage.image) return "📷 Photo";
   if (lastMessage.video) return "📹 Video";
   if (lastMessage.audio) return "🎤 Voice message";

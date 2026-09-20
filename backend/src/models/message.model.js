@@ -1,5 +1,22 @@
 import mongoose from "mongoose";
 
+// A real subdocument schema (rather than a bare object literal) so it can
+// be given `default: undefined` below — without that, Mongoose
+// auto-vivifies the nested `options` array to `[]` on every message,
+// making `poll` a truthy `{ options: [] }` even when no poll was sent.
+const pollSchema = new mongoose.Schema(
+  {
+    question: { type: String },
+    options: [
+      {
+        text: { type: String },
+        votes: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
+      },
+    ],
+  },
+  { _id: false },
+);
+
 const messageSchema = new mongoose.Schema(
   {
     senderId: {
@@ -33,15 +50,9 @@ const messageSchema = new mongoose.Schema(
     // Polls: a question plus 2+ options, each tracking which users voted
     // for it. Single-choice — voting for a new option clears any previous
     // vote by the same user (enforced in the controller, not the schema).
-    poll: {
-      question: { type: String },
-      options: [
-        {
-          text: { type: String },
-          votes: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
-        },
-      ],
-    },
+    // `default: undefined` keeps this field entirely absent on messages
+    // that aren't polls, instead of Mongoose filling in an empty shell.
+    poll: { type: pollSchema, default: undefined },
     seen: {
       type: Boolean,
       default: false,
