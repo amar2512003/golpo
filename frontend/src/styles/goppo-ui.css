@@ -38,7 +38,60 @@ html.dark .chat-shell { box-shadow: 0 28px 100px #0008; }
 .chat-sidebar { background: var(--goppo-panel); }
 .chat-sidebar > div:first-child { padding: 20px 18px; min-height: 88px; }
 .chat-sidebar > div:first-child img { width: 46px; height: 42px; object-fit: cover; border-radius: 12px; }
-.brand-tagline { display: block; font-size: 11px; font-weight: 400; letter-spacing: 0; color: var(--muted); margin-top: 2px; }
+
+/* ---------------- Sidebar wordmark (typewriter) ----------------
+   "Goppo" in the logo's orange, typed out with a caret on a loop. The
+   invisible sizer holds the full word's width so nothing shifts while
+   letters come and go; the typed layer sits on top in the same grid cell,
+   so its gradient always spans the whole word instead of stretching over
+   only the letters typed so far. */
+.brand-name {
+  display: grid;
+  width: max-content;
+  max-width: 100%;
+  font-family: ui-rounded, "SF Pro Rounded", "Hiragino Maru Gothic ProN", "Inter", "Avenir Next", "Segoe UI", sans-serif;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+.brand-name > * { grid-area: 1 / 1; }
+.brand-name-sizer { visibility: hidden; padding-right: 4px; white-space: nowrap; }
+.brand-name-typed {
+  white-space: nowrap;
+  background-image: linear-gradient(180deg, #ffc35e 0%, #ff8b2b 55%, #ff5d2c 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+html.dark .brand-name-typed { filter: drop-shadow(0 0 10px #ff8b2b3d); }
+
+.brand-caret {
+  display: inline-block;
+  width: 2px;
+  height: 0.85em;
+  margin-left: 2px;
+  vertical-align: -0.08em;
+  border-radius: 1px;
+  background: #ffb45e;
+  -webkit-text-fill-color: initial;
+  animation: brand-caret-blink 1.05s step-end infinite;
+}
+/* Solid while a letter is being typed or deleted, blinks when idle. */
+.brand-caret[data-busy="true"] { animation: none; }
+@keyframes brand-caret-blink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }
+
+.brand-tagline {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 1px;
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--muted);
+}
+.brand-heart { color: #ff8b2b; }
 
 .sidebar-search { padding: 12px 14px; }
 .sidebar-search [role="group"] { border-radius: 14px; background: var(--goppo-soft); min-height: 42px; border: 1px solid transparent; }

@@ -5,7 +5,8 @@ import { useAuthStore } from "../../store/useAuthStore";
 import { useChatStore } from "../../store/useChatStore";
 import { useGroupStore } from "../../store/useGroupStore";
 import { useStatusStore } from "../../store/useStatusStore";
-import { APP_NAME, AppLogo } from "../AppLogo";
+import { AppLogo } from "../AppLogo";
+import { AnimatedBrand } from "../AnimatedBrand";
 import { UserButton } from "@clerk/react";
 
 import { Button, SearchField, Tabs } from "@heroui/react";
@@ -137,10 +138,7 @@ function ChatSidebar() {
       <div className="shrink-0 border-b border-border px-2 pb-2 pt-2.5 sm:px-3 sm:pt-3">
         <div className="flex items-center gap-2 px-0.5 sm:gap-2.5 sm:px-1">
           <AppLogo size={32} className="size-8 shrink-0 rounded-[9px] sm:size-8.5" alt="" />
-          <p className="flex-1 truncate text-lg font-bold tracking-tight sm:text-[22px]">
-            {APP_NAME}
-            <span className="brand-tagline">More than just chats</span>
-          </p>
+          <AnimatedBrand />
           <UserButton
             appearance={{
               elements: {
