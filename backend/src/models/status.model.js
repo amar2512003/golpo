@@ -36,7 +36,6 @@ const statusSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
-      index: true,
     },
     // Statuses are image-only by design — an already-hosted ImageKit URL,
     // uploaded through the same pipeline chat media uses.
@@ -72,7 +71,6 @@ const statusSchema = new mongoose.Schema(
     expiresAt: {
       type: Date,
       required: true,
-      index: true,
     },
     // Backstop for the above: if the cleanup job is down for a week,
     // this TTL index reaps the row anyway. That can orphan the ImageKit
@@ -80,7 +78,6 @@ const statusSchema = new mongoose.Schema(
     // resort, not the normal path.
     purgeAfter: {
       type: Date,
-      index: { expires: 0 },
     },
     // Bumped each time cleanup fails to delete this status's asset, so a
     // permanently un-deletable file eventually gets dropped instead of
@@ -90,11 +87,29 @@ const statusSchema = new mongoose.Schema(
       default: 0,
     },
   },
-  { timestamps: true },
+  // autoIndex is off on purpose. Mongoose would otherwise try to build
+  // these indexes on the first use of the model after every cold start,
+  // and a build that fails there takes the request down with it. Indexes
+  // are managed explicitly by syncStatusIndexes() below instead.
+  { timestamps: true, autoIndex: false },
 );
 
+// Every index is named explicitly. Mongo refuses to create an index whose
+// name already exists with different options, and auto-generated names
+// (expiresAt_1 and friends) collide with whatever a previous version of
+// this schema created — which is exactly the kind of failure that's
+// invisible until the first write. Distinct names plus syncIndexes()
+// make a schema change here self-correcting.
+
 // The feed query is always "these users' live statuses, oldest first".
-statusSchema.index({ userId: 1, createdAt: 1 });
+statusSchema.index({ userId: 1, createdAt: 1 }, { name: "status_user_created" });
+
+// Drives the cleanup sweep's "what's expired?" scan. Plain, NOT a TTL
+// index — see the note on expiresAt above.
+statusSchema.index({ expiresAt: 1 }, { name: "status_expiry_scan" });
+
+// The 7-day backstop TTL.
+statusSchema.index({ purgeAfter: 1 }, { name: "status_purge_ttl", expireAfterSeconds: 0 });
 
 // Derive purgeAfter from expiresAt so callers only ever set one date and
 // the two can't drift apart.
@@ -106,5 +121,31 @@ statusSchema.pre("validate", function setPurgeAfter(next) {
 });
 
 const Status = mongoose.model("Status", statusSchema);
+
+// Brings the collection's indexes in line with the schema above: creates
+// what's missing and drops what's no longer declared — including any
+// leftover index from an earlier version of this model, such as the TTL
+// index that used to sit on expiresAt.
+//
+// Runs once per process, after the DB connection is up. Failure is
+// logged and swallowed: indexes are an optimisation and a backstop here,
+// and not having them is far better than a status feature that 500s.
+let indexSyncPromise = null;
+
+export function syncStatusIndexes() {
+  if (!indexSyncPromise) {
+    indexSyncPromise = Status.syncIndexes()
+      .then((droppedIndexes) => {
+        if (droppedIndexes?.length) {
+          console.log("[status] replaced stale indexes:", droppedIndexes.join(", "));
+        }
+      })
+      .catch((error) => {
+        console.error("[status] index sync failed:", error.message);
+      });
+  }
+
+  return indexSyncPromise;
+}
 
 export default Status;

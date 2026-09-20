@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "nodemon src/index.mjs",
     "start": "node src/index.mjs",
-    "db:seed": "node src/seeds/user.seed.js"
+    "db:seed": "node src/seeds/user.seed.js",
+    "fix:status-indexes": "node src/scripts/fix-status-indexes.mjs"
   },
   "keywords": [],
   "author": "",

@@ -7,6 +7,7 @@ import path from "path";
 import { clerkMiddleware } from "@clerk/express";
 
 import { connectDB } from "./lib/db.js";
+import { syncStatusIndexes } from "./models/status.model.js";
 import job, { statusCleanupJob } from "./lib/cron.js";
 import { cleanupExpiredStatusesFully } from "./lib/statusCleanup.js";
 
@@ -41,6 +42,11 @@ async function ensureDBConnection() {
   dbConnected = true;
 
   console.log("MongoDB connected");
+
+  // The Status model has autoIndex off, so its indexes are built here
+  // instead — once per cold start, and never in a way that can fail a
+  // request (syncStatusIndexes swallows its own errors).
+  await syncStatusIndexes();
 }
 
 // --------------------------------------------------
@@ -245,6 +251,8 @@ if (!process.env.VERCEL) {
       // Expired statuses leave images behind in ImageKit, so this sweep
       // runs in every environment. One pass at boot clears whatever
       // expired while the server was down, then every 10 minutes after.
+      await syncStatusIndexes();
+
       statusCleanupJob.start();
       cleanupExpiredStatusesFully().catch((error) =>
         console.error("Initial status cleanup failed:", error.message),

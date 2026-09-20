@@ -7,6 +7,19 @@ import { emitToUsers } from "../lib/socket.js";
 
 const MAX_STATUSES_PER_USER = 30;
 
+// Logs the whole error (stack included, not just the message) and sends
+// the standard 500. Set DEBUG_STATUS=true in the environment to also get
+// the underlying reason back in the response body, which is the only way
+// to see it from the browser on a host where the logs aren't to hand.
+function failWithServerError(res, where, error) {
+  console.error(`Error in ${where}:`, error);
+
+  const body = { message: "Internal server error" };
+  if (process.env.DEBUG_STATUS === "true") body.detail = error?.message;
+
+  res.status(500).json(body);
+}
+
 // Statuses aren't public. The audience is exactly the people you already
 // have a thread with — anyone you've exchanged a DM with, plus everyone
 // in a group you're both in. Same privacy stance as the rest of the app:
@@ -127,8 +140,7 @@ export async function getStatusFeed(req, res) {
 
     res.status(200).json({ mine, others });
   } catch (error) {
-    console.error("Error in getStatusFeed:", error.message);
-    res.status(500).json({ message: "Internal server error" });
+    failWithServerError(res, "getStatusFeed", error);
   }
 }
 
@@ -208,14 +220,20 @@ export async function createStatus(req, res) {
     };
 
     // Contacts get the ring lit up immediately; my own other tabs get it
-    // too so the tray stays consistent across devices.
-    const contactIds = await getContactIds(myId);
-    emitToUsers([...contactIds, myId], "status:new", payload);
+    // too so the tray stays consistent across devices. The status is
+    // already saved at this point, so a failure here must not turn a
+    // successful post into a 500 — the worst case is that someone's ring
+    // waits until their next feed refresh.
+    try {
+      const contactIds = await getContactIds(myId);
+      emitToUsers([...contactIds, myId], "status:new", payload);
+    } catch (error) {
+      console.error("Couldn't notify contacts about new status:", error.message);
+    }
 
     res.status(201).json(payload);
   } catch (error) {
-    console.error("Error in createStatus:", error.message);
-    res.status(500).json({ message: "Internal server error" });
+    failWithServerError(res, "createStatus", error);
   }
 }
 
@@ -268,8 +286,7 @@ export async function markStatusSeen(req, res) {
 
     res.status(200).json({ ok: true });
   } catch (error) {
-    console.error("Error in markStatusSeen:", error.message);
-    res.status(500).json({ message: "Internal server error" });
+    failWithServerError(res, "markStatusSeen", error);
   }
 }
 
@@ -307,8 +324,7 @@ export async function deleteStatus(req, res) {
 
     res.status(200).json({ ok: true });
   } catch (error) {
-    console.error("Error in deleteStatus:", error.message);
-    res.status(500).json({ message: "Internal server error" });
+    failWithServerError(res, "deleteStatus", error);
   }
 }
 
@@ -335,7 +351,6 @@ export async function runStatusCleanup(req, res) {
 
     res.status(200).json(result);
   } catch (error) {
-    console.error("Error in runStatusCleanup:", error.message);
-    res.status(500).json({ message: "Internal server error" });
+    failWithServerError(res, "runStatusCleanup", error);
   }
 }
