@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { getInitials, useSelectedConversation } from "../../hooks/useSelectedConversation";
+import { formatLastMessagePreview, formatSidebarTime } from "../../lib/utils";
 import { useAuthStore } from "../../store/useAuthStore";
 import { useChatStore } from "../../store/useChatStore";
 import { useGroupStore } from "../../store/useGroupStore";
@@ -12,14 +13,31 @@ import { ConversationRow } from "./ConversationRow";
 import { CreateGroupModal } from "./CreateGroupModal";
 import { UserSearchPanel } from "./UserSearchPanel";
 
-function mapUserForList(user, onlineUsers) {
+// Builds the row's subtitle: "You: <preview>" when I sent the last
+// message, otherwise just the preview. Falls back to the given default
+// (member count for a group with no messages yet) once there's nothing
+// to preview at all.
+function buildSubtitle({ lastMessage, authUserId, fallback }) {
+  const preview = formatLastMessagePreview(lastMessage);
+  if (!preview) return fallback;
+  const isMine = lastMessage?.senderId && String(lastMessage.senderId) === String(authUserId);
+  return isMine ? `You: ${preview}` : preview;
+}
+
+function mapUserForList(user, onlineUsers, authUserId) {
   return {
     conversationId: user._id,
+    kind: "dm",
+    lastActivityAt: user.lastMessageAt,
     id: user._id,
     name: user.fullName,
     avatarUrl: user.profilePic,
     initials: getInitials(user.fullName),
     isOnline: onlineUsers.includes(user._id),
+    subtitle: buildSubtitle({ lastMessage: user.lastMessage, authUserId, fallback: "" }),
+    isSubtitleUnread: Boolean(user.unreadCount),
+    unreadCount: user.unreadCount || 0,
+    timestamp: formatSidebarTime(user.lastMessageAt),
     peer: {
       name: user.fullName,
       avatarUrl: user.profilePic,
@@ -29,14 +47,24 @@ function mapUserForList(user, onlineUsers) {
   };
 }
 
-function mapGroupForList(group, liveCall) {
+function mapGroupForList(group, liveCall, authUserId) {
   const memberCount = group.members?.length || 0;
+  const memberCountLabel = `${memberCount} member${memberCount === 1 ? "" : "s"}`;
   return {
     id: group._id,
+    kind: "group",
+    lastActivityAt: group.lastMessageAt ?? group.createdAt,
     name: group.name,
     avatarUrl: group.groupPic,
     initials: getInitials(group.name),
-    subtitle: `${memberCount} member${memberCount === 1 ? "" : "s"}`,
+    subtitle: buildSubtitle({
+      lastMessage: group.lastMessage,
+      authUserId,
+      fallback: memberCountLabel,
+    }),
+    isSubtitleUnread: Boolean(group.unreadCount),
+    unreadCount: group.unreadCount || 0,
+    timestamp: formatSidebarTime(group.lastMessageAt ?? group.createdAt),
     showOnlineIndicator: false,
     liveCall,
   };
@@ -58,6 +86,7 @@ function ChatSidebar() {
   const activeGroupCalls = useGroupStore((state) => state.activeGroupCalls);
 
   const onlineUsers = useAuthStore((state) => state.onlineUsers);
+  const authUserId = useAuthStore((state) => state.authUser?._id);
 
   const { activeConversationId, activeConversationType, isLargeScreen } = useSelectedConversation();
 
@@ -65,14 +94,20 @@ function ChatSidebar() {
 
   const normalizedSearchQuery = searchQuery.trim().toLowerCase();
 
-  const conversationUsers = conversations.map((user) => mapUserForList(user, onlineUsers));
-  const groupItems = groups.map((group) => mapGroupForList(group, activeGroupCalls[group._id]));
+  const conversationUsers = conversations.map((user) => mapUserForList(user, onlineUsers, authUserId));
+  const groupItems = groups.map((group) =>
+    mapGroupForList(group, activeGroupCalls[group._id], authUserId),
+  );
 
-  const filteredConversations = normalizedSearchQuery
-    ? conversationUsers.filter((conversation) =>
-        conversation.peer.name.toLowerCase().includes(normalizedSearchQuery),
-      )
-    : conversationUsers;
+  // The Chats tab is one list: DMs and groups together, newest activity first.
+  const getActivityTime = (item) => (item.lastActivityAt ? new Date(item.lastActivityAt).getTime() : 0);
+  const allChats = [...conversationUsers, ...groupItems].sort(
+    (a, b) => getActivityTime(b) - getActivityTime(a),
+  );
+
+  const filteredChats = normalizedSearchQuery
+    ? allChats.filter((chat) => chat.name.toLowerCase().includes(normalizedSearchQuery))
+    : allChats;
 
   const filteredGroups = normalizedSearchQuery
     ? groupItems.filter((group) => group.name.toLowerCase().includes(normalizedSearchQuery))
@@ -107,24 +142,25 @@ function ChatSidebar() {
         variant="secondary"
         className="sidebar-tabs flex min-h-0 flex-1 flex-col overflow-hidden"
       >
-        <div className="sidebar-search shrink-0 border-b border-border px-3 pb-2 pt-2">
-          <SearchField
-            fullWidth
-            variant="secondary"
-            className="w-full"
-            value={searchQuery}
-            onChange={setSearchQuery}
-          >
-            <SearchField.Group className="rounded-xl">
-              <SearchField.SearchIcon />
-              <SearchField.Input
-                placeholder={sidebarTab === "users" ? "Find someone by email below" : "Search"}
-                disabled={sidebarTab === "users"}
-              />
-              {searchQuery ? <SearchField.ClearButton /> : null}
-            </SearchField.Group>
-          </SearchField>
-        </div>
+        {/* Filters the Chats/Groups lists. The Users tab has its own email
+            search inside the panel, so this bar would do nothing there. */}
+        {sidebarTab !== "users" ? (
+          <div className="sidebar-search shrink-0 border-b border-border px-3 pb-2 pt-2">
+            <SearchField
+              fullWidth
+              variant="secondary"
+              className="w-full"
+              value={searchQuery}
+              onChange={setSearchQuery}
+            >
+              <SearchField.Group className="rounded-xl">
+                <SearchField.SearchIcon />
+                <SearchField.Input placeholder="Search" />
+                {searchQuery ? <SearchField.ClearButton /> : null}
+              </SearchField.Group>
+            </SearchField>
+          </div>
+        ) : null}
 
         <Tabs.ListContainer className="sidebar-navigation shrink-0 border-b border-border px-2 pb-2 pt-1">
           <Tabs.List className="w-full gap-0.5">
@@ -147,21 +183,30 @@ function ChatSidebar() {
           id="chats"
           className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto outline-none"
         >
-          {filteredConversations.length === 0 ? (
+          {filteredChats.length === 0 ? (
             <p className="px-4 py-6 text-center text-sm text-muted">
               No conversations match your search.
             </p>
           ) : (
-            filteredConversations.map((conversation) => (
-              <ConversationRow
-                key={conversation.id}
-                user={conversation}
-                selected={
-                  activeConversationType === "dm" && conversation.id === activeConversationId
-                }
-                onSelect={() => setActiveConversationId(conversation.id)}
-              />
-            ))
+            filteredChats.map((chat) =>
+              chat.kind === "group" ? (
+                <ConversationRow
+                  key={`group:${chat.id}`}
+                  user={chat}
+                  selected={
+                    activeConversationType === "group" && chat.id === activeConversationId
+                  }
+                  onSelect={() => setActiveGroupId(chat.id)}
+                />
+              ) : (
+                <ConversationRow
+                  key={`dm:${chat.id}`}
+                  user={chat}
+                  selected={activeConversationType === "dm" && chat.id === activeConversationId}
+                  onSelect={() => setActiveConversationId(chat.id)}
+                />
+              ),
+            )
           )}
         </Tabs.Panel>
 

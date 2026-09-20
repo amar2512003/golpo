@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 import Group, { MAX_GROUP_MEMBERS } from "../models/group.model.js";
 import GroupMessage from "../models/groupMessage.model.js";
 import { hasImageKitConfig, uploadChatMedia } from "../lib/imagekit.js";
+import { parseAudioDuration } from "../lib/voice.js";
 import { io, joinUserToGroupRooms, endCallForGroup, removeUserFromGroupCall } from "../lib/socket.js";
 
 function isMember(group, userId) {
@@ -11,6 +12,28 @@ function isMember(group, userId) {
 
 function isAdmin(group, userId) {
   return group.admin.toString() === userId.toString();
+}
+
+// Validates a poll payload from the client and normalizes it into the
+// shape the schema expects (question + 2-10 options, each starting with
+// no votes). Returns null if the payload isn't usable.
+function normalizePoll(poll) {
+  if (!poll || typeof poll !== "object") return null;
+
+  const question = (poll.question || "").trim();
+  const options = Array.isArray(poll.options)
+    ? poll.options
+        .map((option) => (typeof option === "string" ? option : option?.text))
+        .map((text) => (text || "").trim())
+        .filter(Boolean)
+    : [];
+
+  if (!question || options.length < 2 || options.length > 10) return null;
+
+  return {
+    question,
+    options: options.map((text) => ({ text, votes: [] })),
+  };
 }
 
 export async function createGroup(req, res) {
@@ -71,7 +94,65 @@ export async function getUserGroups(req, res) {
       .populate("members admin createdBy", "-clerkId")
       .sort({ updatedAt: -1 });
 
-    res.status(200).json(groups);
+    const groupIds = groups.map((group) => group._id);
+
+    // A group's own updatedAt only moves when the group is edited, not when
+    // someone posts — so look up the newest message (and a preview of it)
+    // per group. The sidebar uses this to interleave groups with DMs in
+    // the Chats tab and to show a last-message snippet.
+    const lastMessages = await GroupMessage.aggregate([
+      { $match: { groupId: { $in: groupIds } } },
+      { $sort: { createdAt: 1 } },
+      {
+        $group: {
+          _id: "$groupId",
+          lastMessageAt: { $max: "$createdAt" },
+          lastMessageText: { $last: "$text" },
+          lastMessageImage: { $last: "$image" },
+          lastMessageVideo: { $last: "$video" },
+          lastMessageAudio: { $last: "$audio" },
+          lastMessageSenderId: { $last: "$senderId" },
+        },
+      },
+    ]);
+    const lastMessageByGroup = new Map(lastMessages.map((row) => [String(row._id), row]));
+
+    // Unread = messages someone else sent after I last opened this group.
+    // Groups I've never opened count everything not sent by me.
+    const unreadCounts = await Promise.all(
+      groups.map((group) => {
+        const lastReadAt = group.lastReadBy?.get(String(userId));
+        return GroupMessage.countDocuments({
+          groupId: group._id,
+          senderId: { $ne: userId },
+          ...(lastReadAt ? { createdAt: { $gt: lastReadAt } } : {}),
+        });
+      }),
+    );
+
+    res.status(200).json(
+      groups.map((group, index) => {
+        const lastMessageRow = lastMessageByGroup.get(String(group._id));
+        const groupObject = group.toObject();
+        delete groupObject.lastReadBy;
+
+        return {
+          ...groupObject,
+          // Groups nobody has posted in yet sort by when they were created.
+          lastMessageAt: lastMessageRow?.lastMessageAt ?? group.createdAt,
+          unreadCount: unreadCounts[index],
+          lastMessage: lastMessageRow
+            ? {
+                text: lastMessageRow.lastMessageText,
+                image: lastMessageRow.lastMessageImage,
+                video: lastMessageRow.lastMessageVideo,
+                audio: lastMessageRow.lastMessageAudio,
+                senderId: lastMessageRow.lastMessageSenderId,
+              }
+            : null,
+        };
+      }),
+    );
   } catch (error) {
     console.error("Error in getUserGroups:", error.message);
     res.status(500).json({ message: "Internal server error" });
@@ -198,6 +279,12 @@ export async function getGroupMessages(req, res) {
       .populate("senderId", "-clerkId")
       .sort({ createdAt: 1 });
 
+    // Opening the group is as good as reading everything currently in it —
+    // same idea as markMessagesSeen for DMs, just recorded as a per-user
+    // timestamp instead of flipping a flag on each message.
+    group.lastReadBy.set(userId.toString(), new Date());
+    await group.save();
+
     res.status(200).json(messages);
   } catch (error) {
     console.error("Error in getGroupMessages:", error.message);
@@ -205,10 +292,38 @@ export async function getGroupMessages(req, res) {
   }
 }
 
+// Called when a new group message arrives while that group's thread is
+// already open — same idea as getGroupMessages' own mark-as-read, just
+// without re-fetching the whole message list.
+export async function markGroupMessagesSeen(req, res) {
+  try {
+    const { groupId } = req.params;
+    const userId = req.user._id;
+
+    const group = await Group.findById(groupId);
+
+    if (!group) {
+      return res.status(404).json({ message: "Group not found" });
+    }
+
+    if (!isMember(group, userId)) {
+      return res.status(403).json({ message: "Not a member of this group" });
+    }
+
+    group.lastReadBy.set(userId.toString(), new Date());
+    await group.save();
+
+    res.status(200).json({ message: "Marked as read" });
+  } catch (error) {
+    console.error("Error in markGroupMessagesSeen:", error.message);
+    res.status(500).json({ message: "Internal server error" });
+  }
+}
+
 export async function sendGroupMessage(req, res) {
   try {
     const { groupId } = req.params;
-    const { text, imageUrl: providedImageUrl } = req.body;
+    const { text, imageUrl: providedImageUrl, poll: providedPoll } = req.body;
     const senderId = req.user._id;
 
     const group = await Group.findById(groupId);
@@ -229,6 +344,8 @@ export async function sendGroupMessage(req, res) {
         ? providedImageUrl
         : undefined;
     let videoUrl;
+    let audioUrl;
+    let audioDuration;
 
     if (req.file) {
       if (!hasImageKitConfig()) {
@@ -237,7 +354,18 @@ export async function sendGroupMessage(req, res) {
 
       const url = await uploadChatMedia(req.file);
       if (req.file.mimetype.startsWith("video/")) videoUrl = url;
-      else imageUrl = url;
+      else if (req.file.mimetype.startsWith("audio/")) {
+        audioUrl = url;
+        audioDuration = parseAudioDuration(req.body.audioDuration);
+      } else imageUrl = url;
+    }
+
+    let poll;
+    if (providedPoll) {
+      poll = normalizePoll(providedPoll);
+      if (!poll) {
+        return res.status(400).json({ message: "A poll needs a question and at least 2 options" });
+      }
     }
 
     const newMessage = await GroupMessage.create({
@@ -246,6 +374,9 @@ export async function sendGroupMessage(req, res) {
       text,
       image: imageUrl,
       video: videoUrl,
+      audio: audioUrl,
+      audioDuration,
+      poll,
     });
 
     const populatedMessage = await newMessage.populate("senderId", "-clerkId");
@@ -255,6 +386,58 @@ export async function sendGroupMessage(req, res) {
     res.status(201).json(populatedMessage);
   } catch (error) {
     console.error("Error in sendGroupMessage:", error.message);
+    res.status(500).json({ message: "Internal server error" });
+  }
+}
+
+// Casts (or retracts) a vote on a group poll message. Single-choice:
+// picking an option clears any other option the same user had voted for;
+// picking the option you already voted for un-votes it. Only current
+// group members can vote.
+export async function voteOnGroupPoll(req, res) {
+  try {
+    const { messageId } = req.params;
+    const { optionIndex } = req.body;
+    const userId = req.user._id;
+
+    const message = await GroupMessage.findById(messageId);
+
+    if (!message || !message.poll) {
+      return res.status(404).json({ message: "Poll not found" });
+    }
+
+    const group = await Group.findById(message.groupId);
+    if (!group || !isMember(group, userId)) {
+      return res.status(403).json({ message: "Not a member of this group" });
+    }
+
+    const options = message.poll.options;
+    if (
+      typeof optionIndex !== "number" ||
+      optionIndex < 0 ||
+      optionIndex >= options.length
+    ) {
+      return res.status(400).json({ message: "Invalid poll option" });
+    }
+
+    const alreadyVotedHere = options[optionIndex].votes.some(
+      (voterId) => String(voterId) === String(userId),
+    );
+
+    options.forEach((option) => {
+      option.votes = option.votes.filter((voterId) => String(voterId) !== String(userId));
+    });
+    if (!alreadyVotedHere) options[optionIndex].votes.push(userId);
+
+    await message.save();
+
+    const populatedMessage = await message.populate("senderId", "-clerkId");
+
+    io.to(String(message.groupId)).emit("groupMessagePollUpdated", populatedMessage);
+
+    res.status(200).json(populatedMessage);
+  } catch (error) {
+    console.error("Error in voteOnGroupPoll:", error.message);
     res.status(500).json({ message: "Internal server error" });
   }
 }
