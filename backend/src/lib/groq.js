@@ -14,6 +14,36 @@ const SYSTEM_PROMPT =
   "Reply the way you would in a chat conversation: concise and conversational " +
   "by default, going into more depth only when the user's question calls for it.";
 
+// The chat bubble has no Markdown renderer, so a reply with **bold**,
+// `code`, # headings etc. would show those characters literally. Strips
+// the common Markdown syntax down to plain text instead.
+function stripMarkdown(text) {
+  return text
+    // Fenced code blocks: keep the code, drop the ``` fences/language tag.
+    .replace(/```[a-zA-Z0-9]*\n?([\s\S]*?)```/g, "$1")
+    // Inline code.
+    .replace(/`([^`]+)`/g, "$1")
+    // Bold+italic, then bold, then italic (order matters so ** isn't
+    // left half-stripped by the single-* pass).
+    .replace(/\*\*\*(.+?)\*\*\*/g, "$1")
+    .replace(/___(.+?)___/g, "$1")
+    .replace(/\*\*(.+?)\*\*/g, "$1")
+    .replace(/__(.+?)__/g, "$1")
+    .replace(/\*(.+?)\*/g, "$1")
+    .replace(/(?<!\w)_(.+?)_(?!\w)/g, "$1")
+    // Headings ("### Title" -> "Title").
+    .replace(/^#{1,6}\s+/gm, "")
+    // Bullet markers ("- item" / "* item" -> "• item").
+    .replace(/^\s*[-*+]\s+/gm, "• ")
+    // Links: [label](url) -> "label (url)".
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1 ($2)")
+    // Blockquote markers.
+    .replace(/^>\s?/gm, "")
+    // Collapse the blank lines left behind by stripped headings/fences.
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 export function isGroqConfigured() {
   return Boolean(process.env.GROQ_API_KEY);
 }
@@ -52,5 +82,5 @@ export async function getGroqChatReply(messages) {
     throw new Error("Groq API returned an empty response");
   }
 
-  return content;
+  return stripMarkdown(content);
 }
