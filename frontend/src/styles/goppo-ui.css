@@ -278,8 +278,8 @@ html.dark .status-ring--seen { background: #33405a; }
 
 /* ---------------- Shared-location cards ----------------
    The bubble drops to a thin frame so the map sits edge-to-edge inside
-   it, like a photo. Tiles come from CARTO (dark style in dark mode);
-   until they load, a faint grid stands in so the card never looks empty. */
+   it, like a photo. The preview is a keyless Google Maps embed iframe;
+   until it loads, a faint grid stands in so the card never looks empty. */
 .message-bubble.message-bubble--location { padding: 5px; }
 .message-bubble--location > p { padding-left: 8px; padding-right: 8px; }
 
@@ -302,16 +302,10 @@ html.dark .location-map {
   box-shadow: inset 0 0 0 1px #ffffff14;
 }
 
-.location-map-layer { transition: transform .6s cubic-bezier(.2, .7, .2, 1); }
-.location-card:hover .location-map-layer { transform: scale(1.05); }
-
-.location-tile { opacity: 0; transition: opacity .35s ease; }
-.location-tile[data-loaded="true"] { opacity: 1; }
-
-.location-credit { color: #00000088; text-shadow: 0 0 3px #ffffffcc; }
-html.dark .location-credit { color: #ffffff88; text-shadow: 0 0 3px #000000cc; }
+.location-map-frame { transition: transform .6s cubic-bezier(.2, .7, .2, 1); }
+.location-card:hover .location-map-frame { transform: scale(1.05); }
 
 @media (prefers-reduced-motion: reduce) {
-  .location-map-layer, .location-tile { transition: none; }
-  .location-card:hover .location-map-layer { transform: none; }
+  .location-map-frame { transition: none; }
+  .location-card:hover .location-map-frame { transform: none; }
 }
